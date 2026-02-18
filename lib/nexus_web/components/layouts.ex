@@ -1,69 +1,37 @@
 defmodule NexusWeb.Layouts do
   @moduledoc """
-  This module holds layouts and related functionality
-  used by your application.
+  Layout components for the application.
+
+  - `app/1` — Top-level layout for non-project pages (project listing, auth)
+  - `project/1` — Sidebar layout for project-scoped pages
   """
   use NexusWeb, :html
 
-  # Embed all files in layouts/* within this module.
-  # The default root.html.heex file contains the HTML
-  # skeleton of your application, namely HTML headers
-  # and other static content.
   embed_templates "layouts/*"
 
-  @doc """
-  Renders your app layout.
+  # ──────────────────────────────────────────────
+  # App Layout (project listing, auth pages)
+  # ──────────────────────────────────────────────
 
-  This function is typically invoked from every template,
-  and it often contains your application menu, sidebar,
-  or similar.
-
-  ## Examples
-
-      <Layouts.app flash={@flash}>
-        <h1>Content</h1>
-      </Layouts.app>
-
-  """
-  attr :flash, :map, required: true, doc: "the map of flash messages"
-
-  attr :current_scope, :map,
-    default: nil,
-    doc: "the current [scope](https://hexdocs.pm/phoenix/scopes.html)"
-
+  attr :flash, :map, required: true
+  attr :current_scope, :map, default: nil
   slot :inner_block, required: true
 
   def app(assigns) do
     ~H"""
-    <header class="navbar px-4 sm:px-6 lg:px-8">
+    <header class="navbar px-4 sm:px-6 lg:px-8 border-b border-base-300">
       <div class="flex-1">
-        <a href="/" class="flex-1 flex w-fit items-center gap-2">
-          <img src={~p"/images/logo.svg"} width="36" />
-          <span class="text-sm font-semibold">v{Application.spec(:phoenix, :vsn)}</span>
-        </a>
+        <.link navigate={~p"/projects"} class="flex items-center gap-2 font-bold text-lg">
+          Nexus
+        </.link>
       </div>
       <div class="flex-none">
-        <ul class="flex flex-column px-1 space-x-4 items-center">
-          <li>
-            <a href="https://phoenixframework.org/" class="btn btn-ghost">Website</a>
-          </li>
-          <li>
-            <a href="https://github.com/phoenixframework/phoenix" class="btn btn-ghost">GitHub</a>
-          </li>
-          <li>
-            <.theme_toggle />
-          </li>
-          <li>
-            <a href="https://hexdocs.pm/phoenix/overview.html" class="btn btn-primary">
-              Get Started <span aria-hidden="true">&rarr;</span>
-            </a>
-          </li>
-        </ul>
+        <.theme_toggle />
       </div>
     </header>
 
-    <main class="px-4 py-20 sm:px-6 lg:px-8">
-      <div class="mx-auto max-w-2xl space-y-4">
+    <main class="px-4 py-12 sm:px-6 lg:px-8">
+      <div class="mx-auto max-w-5xl">
         {render_slot(@inner_block)}
       </div>
     </main>
@@ -72,12 +40,362 @@ defmodule NexusWeb.Layouts do
     """
   end
 
+  # ──────────────────────────────────────────────
+  # Project Layout (sidebar + main content)
+  # ──────────────────────────────────────────────
+
+  attr :flash, :map, required: true
+  attr :project, :map, required: true
+  attr :project_role, :atom, default: nil
+  attr :sidebar_directories, :list, default: []
+  attr :sidebar_pages, :list, default: []
+  attr :breadcrumbs, :list, default: []
+  attr :active_path, :string, default: nil
+
+  slot :inner_block, required: true
+
+  def project(assigns) do
+    tree_items = build_tree_items(assigns.sidebar_directories, assigns.sidebar_pages)
+    assigns = assign(assigns, :tree_items, tree_items)
+
+    ~H"""
+    <div class="flex h-screen bg-base-100">
+      <%!-- Sidebar --%>
+      <aside class="w-64 bg-base-200 flex flex-col shrink-0 border-r border-base-300">
+        <%!-- Project header --%>
+        <div class="p-4 border-b border-base-300">
+          <.link
+            navigate={~p"/projects"}
+            class="font-bold text-lg hover:text-primary transition-colors"
+          >
+            Nexus
+          </.link>
+          <.link
+            navigate={~p"/projects/#{@project.slug}"}
+            class="block text-sm text-base-content/60 hover:text-base-content transition-colors mt-0.5 truncate"
+          >
+            {@project.name}
+          </.link>
+        </div>
+
+        <%!-- Content tree --%>
+        <div class="flex-1 overflow-y-auto p-2">
+          <div class="px-2 py-1.5 text-xs font-semibold text-base-content/40 uppercase tracking-wider">
+            Content
+          </div>
+          <div
+            id="content-tree"
+            phx-hook="ContentTreeSort"
+            data-project-id={@project.id}
+            class="mt-1"
+          >
+            <ul class="menu menu-sm p-0 sortable-container" data-parent-type="root" data-parent-id="">
+              <%= if @tree_items == [] do %>
+                <li class="disabled">
+                  <span class="text-xs text-base-content/30">No content yet</span>
+                </li>
+              <% else %>
+                <.tree_item
+                  :for={item <- @tree_items}
+                  item={item}
+                  project_slug={to_string(@project.slug)}
+                  active_path={@active_path}
+                />
+              <% end %>
+            </ul>
+          </div>
+          <.link
+            navigate={~p"/projects/#{@project.slug}/pages/new"}
+            class="flex items-center gap-1.5 px-3 py-1.5 mt-2 text-xs text-base-content/40 hover:text-base-content hover:bg-base-300 rounded-box transition-colors"
+          >
+            <.icon name="hero-plus" class="size-3" /> New page
+          </.link>
+        </div>
+
+        <%!-- Bottom nav --%>
+        <nav class="border-t border-base-300 p-2 space-y-px">
+          <.sidebar_nav_link
+            href={~p"/projects/#{@project.slug}/directories"}
+            icon="hero-folder-open"
+            label="Directories"
+          />
+          <.sidebar_nav_link
+            href={~p"/projects/#{@project.slug}/members"}
+            icon="hero-users"
+            label="Members"
+          />
+          <.sidebar_nav_link
+            href={~p"/projects/#{@project.slug}/api-keys"}
+            icon="hero-key"
+            label="API Keys"
+          />
+          <.sidebar_nav_link
+            href={~p"/projects/#{@project.slug}/settings"}
+            icon="hero-cog-6-tooth"
+            label="Settings"
+          />
+        </nav>
+      </aside>
+
+      <%!-- Main area --%>
+      <div class="flex-1 flex flex-col min-w-0">
+        <%!-- Top bar with breadcrumbs --%>
+        <header class="h-14 border-b border-base-300 flex items-center px-6 shrink-0">
+          <nav class="flex items-center gap-1.5 text-sm min-w-0">
+            <.link
+              navigate={~p"/projects"}
+              class="text-base-content/40 hover:text-base-content shrink-0"
+            >
+              Projects
+            </.link>
+            <.icon name="hero-chevron-right-mini" class="size-4 text-base-content/25 shrink-0" />
+            <.link
+              navigate={~p"/projects/#{@project.slug}"}
+              class={[
+                "hover:text-base-content truncate",
+                if(@breadcrumbs == [],
+                  do: "text-base-content font-medium",
+                  else: "text-base-content/40"
+                )
+              ]}
+            >
+              {@project.name}
+            </.link>
+            <%= for {{label, path}, idx} <- Enum.with_index(@breadcrumbs) do %>
+              <.icon
+                name="hero-chevron-right-mini"
+                class="size-4 text-base-content/25 shrink-0"
+              />
+              <%= if idx == length(@breadcrumbs) - 1 do %>
+                <span class="text-base-content font-medium truncate">{label}</span>
+              <% else %>
+                <.link
+                  navigate={path}
+                  class="text-base-content/40 hover:text-base-content truncate"
+                >
+                  {label}
+                </.link>
+              <% end %>
+            <% end %>
+          </nav>
+          <div class="ml-auto flex items-center gap-3 shrink-0">
+            <.theme_toggle />
+          </div>
+        </header>
+
+        <%!-- Page content --%>
+        <main class="flex-1 overflow-y-auto">
+          {render_slot(@inner_block)}
+        </main>
+      </div>
+    </div>
+
+    <.flash_group flash={@flash} />
+    """
+  end
+
+  # ──────────────────────────────────────────────
+  # Sidebar Tree Components
+  # ──────────────────────────────────────────────
+
+  attr :item, :map, required: true
+  attr :project_slug, :string, required: true
+  attr :active_path, :string, default: nil
+
+  defp tree_item(assigns) do
+    ~H"""
+    <%= if @item.type == :directory do %>
+      <li
+        id={"tree-item-directory-#{@item.data.id}"}
+        class="tree-item"
+        data-type="directory"
+        data-id={@item.data.id}
+        data-position={@item.data.position || 0}
+        data-parent-id={@item.data.parent_id || ""}
+      >
+        <details open>
+          <summary class="group directory-summary">
+            <.icon
+              name="hero-bars-2"
+              class="size-3 text-base-content/20 shrink-0 cursor-grab drag-handle opacity-0 group-hover:opacity-100 transition-opacity"
+            />
+            <.icon name="hero-folder" class="size-4 shrink-0 folder-closed" />
+            <.icon name="hero-folder-open" class="size-4 shrink-0 folder-open" />
+            <span class="truncate font-medium text-sm text-base-content/60">
+              {@item.data.name}
+            </span>
+          </summary>
+          <ul
+            class="sortable-container menu-dropdown menu-dropdown-show"
+            data-parent-type="directory"
+            data-parent-id={@item.data.id}
+          >
+            <.tree_item
+              :for={child <- @item.children}
+              item={child}
+              project_slug={@project_slug}
+              active_path={@active_path}
+            />
+          </ul>
+        </details>
+      </li>
+    <% else %>
+      <li
+        id={"tree-item-page-#{@item.data.id}"}
+        class="tree-item"
+        data-type="page"
+        data-id={@item.data.id}
+        data-position={@item.data.position || 0}
+        data-directory-id={@item.data.directory_id || ""}
+        data-parent-page-id={@item.data.parent_page_id || ""}
+      >
+        <%= if @item.children != [] do %>
+          <details open>
+            <summary class={[
+              "group",
+              if(@active_path == to_string(@item.data.full_path),
+                do: "bg-primary/10 text-primary font-medium",
+                else: "text-base-content/60"
+              )
+            ]}>
+              <.icon
+                name="hero-bars-2"
+                class="size-3 text-base-content/20 shrink-0 cursor-grab drag-handle opacity-0 group-hover:opacity-100 transition-opacity"
+              />
+              <.icon name="hero-document-text" class="size-4 shrink-0" />
+              <span class="truncate text-sm">{@item.data.slug}</span>
+              <span :if={@item.data.status == :published} class="ml-auto shrink-0">
+                <span class="w-1.5 h-1.5 rounded-full bg-success inline-block"></span>
+              </span>
+            </summary>
+            <ul
+              class="sortable-container menu-dropdown menu-dropdown-show"
+              data-parent-type="page"
+              data-parent-id={@item.data.id}
+            >
+              <.tree_item
+                :for={child <- @item.children}
+                item={child}
+                project_slug={@project_slug}
+                active_path={@active_path}
+              />
+            </ul>
+          </details>
+        <% else %>
+          <.link
+            navigate={~p"/projects/#{@project_slug}/pages/#{@item.data.id}/edit"}
+            class={[
+              "group",
+              if(@active_path == to_string(@item.data.full_path),
+                do: "bg-primary/10 text-primary font-medium",
+                else: "text-base-content/60"
+              )
+            ]}
+          >
+            <.icon
+              name="hero-bars-2"
+              class="size-3 text-base-content/20 shrink-0 cursor-grab drag-handle opacity-0 group-hover:opacity-100 transition-opacity"
+            />
+            <.icon name="hero-document-text" class="size-4 shrink-0" />
+            <span class="truncate text-sm">{@item.data.slug}</span>
+            <span :if={@item.data.status == :published} class="ml-auto shrink-0">
+              <span class="w-1.5 h-1.5 rounded-full bg-success inline-block"></span>
+            </span>
+          </.link>
+          <ul
+            class="sortable-container menu-dropdown menu-dropdown-show"
+            data-parent-type="page"
+            data-parent-id={@item.data.id}
+          >
+          </ul>
+        <% end %>
+      </li>
+    <% end %>
+    """
+  end
+
+  attr :href, :string, required: true
+  attr :icon, :string, required: true
+  attr :label, :string, required: true
+
+  defp sidebar_nav_link(assigns) do
+    ~H"""
+    <.link
+      navigate={@href}
+      class="flex items-center gap-2 px-3 py-2 text-sm rounded-box hover:bg-base-300 text-base-content/60 hover:text-base-content transition-colors"
+    >
+      <.icon name={@icon} class="size-4" />
+      {@label}
+    </.link>
+    """
+  end
+
+  # ──────────────────────────────────────────────
+  # Tree Data Builder
+  # ──────────────────────────────────────────────
+
+  defp build_tree_items(directories, pages) do
+    dir_by_parent = Enum.group_by(directories, & &1.parent_id)
+    pages_by_dir = Enum.group_by(pages, & &1.directory_id)
+    pages_by_parent = Enum.group_by(pages, & &1.parent_page_id)
+
+    # Build directory tree (includes pages inside directories)
+    dir_tree = build_directory_tree(nil, dir_by_parent, pages_by_dir, pages_by_parent)
+
+    # Build root-level pages (no directory, no parent page)
+    root_pages = build_page_tree(nil, nil, pages_by_dir, pages_by_parent)
+
+    dir_tree ++ root_pages
+  end
+
+  defp build_directory_tree(parent_id, dir_by_parent, pages_by_dir, pages_by_parent) do
+    dirs =
+      Map.get(dir_by_parent, parent_id, [])
+      |> Enum.sort_by(&(&1.position || 0))
+
+    Enum.map(dirs, fn dir ->
+      child_dirs = build_directory_tree(dir.id, dir_by_parent, pages_by_dir, pages_by_parent)
+      child_pages = build_page_tree(dir.id, nil, pages_by_dir, pages_by_parent)
+
+      %{
+        type: :directory,
+        data: dir,
+        children: child_dirs ++ child_pages
+      }
+    end)
+  end
+
+  defp build_page_tree(directory_id, parent_page_id, pages_by_dir, pages_by_parent) do
+    # Get pages that match the directory and parent_page criteria
+    pages =
+      if parent_page_id do
+        # Getting sub-pages (pages with this parent_page_id)
+        Map.get(pages_by_parent, parent_page_id, [])
+      else
+        # Getting pages in a directory (or root) without a parent page
+        Map.get(pages_by_dir, directory_id, [])
+        |> Enum.filter(&is_nil(&1.parent_page_id))
+      end
+
+    pages
+    |> Enum.sort_by(&(&1.position || 0))
+    |> Enum.map(fn page ->
+      sub_pages = build_page_tree(directory_id, page.id, pages_by_dir, pages_by_parent)
+
+      %{
+        type: :page,
+        data: page,
+        children: sub_pages
+      }
+    end)
+  end
+
+  # ──────────────────────────────────────────────
+  # Shared Components
+  # ──────────────────────────────────────────────
+
   @doc """
   Shows the flash group with standard titles and content.
-
-  ## Examples
-
-      <.flash_group flash={@flash} />
   """
   attr :flash, :map, required: true, doc: "the map of flash messages"
   attr :id, :string, default: "flash-group", doc: "the optional id of flash container"
@@ -117,8 +435,6 @@ defmodule NexusWeb.Layouts do
 
   @doc """
   Provides dark vs light theme toggle based on themes defined in app.css.
-
-  See <head> in root.html.heex which applies the theme before page load.
   """
   def theme_toggle(assigns) do
     ~H"""

@@ -104,3 +104,64 @@
 [data-phx-session], [data-phx-teleported-src] { display: contents }
 
 /* This file is for your main application CSS */
+
+/* Content tree drag-and-drop styles */
+.sortable-ghost {
+  opacity: 0.4;
+}
+
+/* daisyUI menu tree adjustments */
+#content-tree .menu {
+  --menu-item-padding: 0.375rem 0.5rem;
+}
+
+#content-tree summary,
+#content-tree li > a {
+  display: flex !important;
+  align-items: center;
+  gap: 0.375rem;
+  grid-template-columns: unset !important;
+}
+
+#content-tree summary::marker,
+#content-tree summary::-webkit-details-marker {
+  display: none;
+}
+
+/* Arrow indicator for page summaries only */
+#content-tree details > summary:not(.directory-summary)::before {
+  content: "";
+  width: 0;
+  height: 0;
+  border-style: solid;
+  border-width: 4px 0 4px 5px;
+  border-color: transparent transparent transparent currentColor;
+  opacity: 0.4;
+  transition: transform 0.15s ease;
+  flex-shrink: 0;
+}
+
+#content-tree details[open] > summary:not(.directory-summary)::before {
+  transform: rotate(90deg);
+}
+
+/* Directory folder icon toggle */
+#content-tree .directory-summary .folder-open {
+  display: none;
+}
+
+#content-tree .directory-summary .folder-closed {
+  display: block;
+}
+
+#content-tree details[open] > .directory-summary .folder-open {
+  display: block;
+}
+
+#content-tree details[open] > .directory-summary .folder-closed {
+  display: none;
+}
+
+#content-tree .menu-dropdown {
+  padding-left: 1rem;
+}

@@ -28,20 +28,26 @@ defmodule NexusWeb.Router do
     plug :set_actor, :user
   end
 
+  pipeline :public_api do
+    plug :accepts, ["json"]
+    plug NexusWeb.Plugs.ProjectApiKeyAuth
+  end
+
   scope "/", NexusWeb do
     pipe_through :browser
 
     ash_authentication_live_session :authenticated_routes do
-      # in each liveview, add one of the following at the top of the module:
-      #
-      # If an authenticated user must be present:
-      # on_mount {NexusWeb.LiveUserAuth, :live_user_required}
-      #
-      # If an authenticated user *may* be present:
-      # on_mount {NexusWeb.LiveUserAuth, :live_user_optional}
-      #
-      # If an authenticated user must *not* be present:
-      # on_mount {NexusWeb.LiveUserAuth, :live_no_user}
+      live "/projects", ProjectLive.Index, :index
+      live "/projects/new", ProjectLive.Index, :new
+      live "/projects/:slug", ProjectLive.Show, :show
+      live "/projects/:slug/settings", ProjectLive.Settings, :edit
+      live "/projects/:slug/members", MembershipLive.Index, :index
+      live "/projects/:slug/api-keys", ProjectApiKeyLive.Index, :index
+      live "/projects/:slug/directories", DirectoryLive.Index, :index
+      live "/projects/:slug/pages", PageLive.Index, :index
+      live "/projects/:slug/pages/new", PageLive.New, :new
+      live "/projects/:slug/pages/:id/edit", PageLive.Edit, :edit
+      live "/projects/:slug/pages/:id/versions", PageLive.Versions, :index
     end
   end
 
@@ -91,10 +97,12 @@ defmodule NexusWeb.Router do
     )
   end
 
-  # Other scopes may use custom stacks.
-  # scope "/api", NexusWeb do
-  #   pipe_through :api
-  # end
+  scope "/api/v1", NexusWeb.Api do
+    pipe_through :public_api
+
+    get "/projects/:slug/tree", PageRenderController, :tree
+    get "/projects/:slug/render/*path", PageRenderController, :render_page
+  end
 
   # Enable LiveDashboard and Swoosh mailbox preview in development
   if Application.compile_env(:nexus, :dev_routes) do
