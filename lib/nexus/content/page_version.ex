@@ -12,6 +12,7 @@ defmodule Nexus.Content.PageVersion do
 
   code_interface do
     define :create
+    define :auto_save
     define :current_for_locale, args: [:page_id, :locale]
     define :history, args: [:page_id, :locale]
     define :rollback, args: [:version_id]
@@ -31,7 +32,8 @@ defmodule Nexus.Content.PageVersion do
         :og_title,
         :og_description,
         :og_image_url,
-        :blocks,
+        :template_data,
+        :content_html,
         :page_id,
         :created_by_id
       ]
@@ -81,7 +83,8 @@ defmodule Nexus.Content.PageVersion do
             |> Ash.Changeset.force_change_attribute(:og_title, old_version.og_title)
             |> Ash.Changeset.force_change_attribute(:og_description, old_version.og_description)
             |> Ash.Changeset.force_change_attribute(:og_image_url, old_version.og_image_url)
-            |> Ash.Changeset.force_change_attribute(:blocks, old_version.blocks)
+            |> Ash.Changeset.force_change_attribute(:template_data, old_version.template_data)
+            |> Ash.Changeset.force_change_attribute(:content_html, old_version.content_html)
 
           {:error, _} ->
             Ash.Changeset.add_error(changeset,
@@ -92,6 +95,10 @@ defmodule Nexus.Content.PageVersion do
       end
 
       change Nexus.Content.Changes.AutoIncrementVersion
+    end
+
+    update :auto_save do
+      accept [:template_data, :content_html, :title, :meta_description, :meta_keywords]
     end
 
     update :unset_current do
@@ -107,6 +114,10 @@ defmodule Nexus.Content.PageVersion do
     end
 
     policy action_type(:create) do
+      authorize_if {Nexus.Content.Checks.HasContentRole, roles: [:admin, :editor]}
+    end
+
+    policy action(:auto_save) do
       authorize_if {Nexus.Content.Checks.HasContentRole, roles: [:admin, :editor]}
     end
 
@@ -155,9 +166,13 @@ defmodule Nexus.Content.PageVersion do
       public? true
     end
 
-    attribute :blocks, {:array, Nexus.Content.Blocks.Block} do
+    attribute :template_data, :map do
       public? true
-      default []
+      default %{"body" => %{"type" => "doc", "content" => [%{"type" => "paragraph"}]}}
+    end
+
+    attribute :content_html, :string do
+      public? true
     end
 
     attribute :is_current, :boolean do

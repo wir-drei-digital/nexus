@@ -25,7 +25,7 @@ defmodule NexusWeb.PageLive.Versions do
         {:ok,
          socket
          |> put_flash(:error, "Page not found")
-         |> push_navigate(to: ~p"/projects/#{project.slug}/pages")}
+         |> push_navigate(to: ~p"/projects/#{project.slug}")}
     end
   end
 
@@ -61,8 +61,9 @@ defmodule NexusWeb.PageLive.Versions do
   end
 
   @impl true
-  def handle_event("reorder_tree_item", params, socket) do
-    NexusWeb.ContentTreeHandlers.handle_event("reorder_tree_item", params, socket)
+  def handle_event(event, params, socket)
+      when event in ~w(reorder_tree_item start_creating_page start_creating_folder cancel_inline_create save_inline_content) do
+    NexusWeb.ContentTreeHandlers.handle_event(event, params, socket)
   end
 
   defp load_versions(page, locale) do
@@ -76,11 +77,11 @@ defmodule NexusWeb.PageLive.Versions do
       flash={@flash}
       project={@project}
       project_role={@project_role}
-      sidebar_directories={@sidebar_directories}
+      sidebar_folders={@sidebar_folders}
       sidebar_pages={@sidebar_pages}
+      creating_content_type={@creating_content_type}
       active_path={to_string(@page.full_path)}
       breadcrumbs={[
-        {"Pages", ~p"/projects/#{@project.slug}/pages"},
         {to_string(@page.slug), ~p"/projects/#{@project.slug}/pages/#{@page.id}/edit"},
         {"Versions", nil}
       ]}
@@ -127,9 +128,9 @@ defmodule NexusWeb.PageLive.Versions do
                 {version.title || "(untitled)"}
               </div>
               <div class="text-xs text-base-content/40">
-                {Calendar.strftime(version.inserted_at, "%Y-%m-%d %H:%M:%S")} | {length(
-                  version.blocks || []
-                )} blocks
+                {Calendar.strftime(version.inserted_at, "%Y-%m-%d %H:%M:%S")} | {map_size(
+                  version.template_data || %{}
+                )} sections
               </div>
             </div>
             <button

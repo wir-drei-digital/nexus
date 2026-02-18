@@ -9,19 +9,19 @@ defmodule Nexus.Content.ContentTest do
     %{user: user, project: project}
   end
 
-  describe "directories" do
-    test "creates a directory with full_path", %{user: user, project: project} do
-      dir = create_directory(project, user, %{name: "Blog", slug: "blog"})
+  describe "folders" do
+    test "creates a folder with full_path", %{user: user, project: project} do
+      folder = create_folder(project, user, %{name: "Blog", slug: "blog"})
 
-      assert to_string(dir.full_path) == "blog"
-      assert dir.name == "Blog"
+      assert to_string(folder.full_path) == "blog"
+      assert folder.name == "Blog"
     end
 
     test "builds nested full_path", %{user: user, project: project} do
-      parent = create_directory(project, user, %{name: "Blog", slug: "blog"})
+      parent = create_folder(project, user, %{name: "Blog", slug: "blog"})
 
       child =
-        create_directory(project, user, %{
+        create_folder(project, user, %{
           name: "2024",
           slug: "2024",
           parent_id: parent.id
@@ -31,10 +31,10 @@ defmodule Nexus.Content.ContentTest do
     end
 
     test "enforces unique path per project", %{user: user, project: project} do
-      create_directory(project, user, %{name: "Blog", slug: "blog"})
+      create_folder(project, user, %{name: "Blog", slug: "blog"})
 
       assert_raise Ash.Error.Invalid, fn ->
-        create_directory(project, user, %{name: "Blog 2", slug: "blog"})
+        create_folder(project, user, %{name: "Blog 2", slug: "blog"})
       end
     end
   end
@@ -47,11 +47,11 @@ defmodule Nexus.Content.ContentTest do
       assert page.status == :draft
     end
 
-    test "builds full_path from directory", %{user: user, project: project} do
-      dir = create_directory(project, user, %{name: "Blog", slug: "blog"})
+    test "builds full_path from folder", %{user: user, project: project} do
+      folder = create_folder(project, user, %{name: "Blog", slug: "blog"})
 
       page =
-        create_page(project, user, %{slug: "my-post", directory_id: dir.id})
+        create_page(project, user, %{slug: "my-post", folder_id: folder.id})
 
       assert to_string(page.full_path) == "blog/my-post"
     end

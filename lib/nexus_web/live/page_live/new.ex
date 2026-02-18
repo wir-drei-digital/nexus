@@ -4,17 +4,27 @@ defmodule NexusWeb.PageLive.New do
   on_mount {NexusWeb.LiveUserAuth, :live_user_required}
   on_mount {NexusWeb.ProjectScope, :default}
 
+  alias Nexus.Content.Templates.Registry
+
   @impl true
   def mount(_params, _session, socket) do
     project = socket.assigns.project
-    directories = list_directories(project, socket.assigns.current_user)
+    folders = list_folders(project, socket.assigns.current_user)
+    available_templates = Registry.available_for_project(project.available_templates)
 
-    form = to_form(%{"slug" => "", "directory_id" => "", "parent_page_id" => ""})
+    form =
+      to_form(%{
+        "slug" => "",
+        "folder_id" => "",
+        "parent_page_id" => "",
+        "template_slug" => "default"
+      })
 
     {:ok,
      socket
      |> assign(:page_title, "#{project.name} - New Page")
-     |> assign(:directories, directories)
+     |> assign(:folders, folders)
+     |> assign(:available_templates, available_templates)
      |> assign(:form, form)}
   end
 
@@ -23,7 +33,7 @@ defmodule NexusWeb.PageLive.New do
     attrs =
       params
       |> Map.put("project_id", socket.assigns.project.id)
-      |> clean_optional("directory_id")
+      |> clean_optional("folder_id")
       |> clean_optional("parent_page_id")
 
     case Nexus.Content.Page.create(attrs, actor: socket.assigns.current_user) do
@@ -39,8 +49,9 @@ defmodule NexusWeb.PageLive.New do
   end
 
   @impl true
-  def handle_event("reorder_tree_item", params, socket) do
-    NexusWeb.ContentTreeHandlers.handle_event("reorder_tree_item", params, socket)
+  def handle_event(event, params, socket)
+      when event in ~w(reorder_tree_item start_creating_page start_creating_folder cancel_inline_create save_inline_content) do
+    NexusWeb.ContentTreeHandlers.handle_event(event, params, socket)
   end
 
   defp clean_optional(params, key) do
@@ -51,8 +62,8 @@ defmodule NexusWeb.PageLive.New do
     end
   end
 
-  defp list_directories(project, user) do
-    Nexus.Content.Directory.for_project!(project.id, actor: user)
+  defp list_folders(project, user) do
+    Nexus.Content.Folder.for_project!(project.id, actor: user)
   end
 
   @impl true
@@ -62,34 +73,42 @@ defmodule NexusWeb.PageLive.New do
       flash={@flash}
       project={@project}
       project_role={@project_role}
-      sidebar_directories={@sidebar_directories}
+      sidebar_folders={@sidebar_folders}
       sidebar_pages={@sidebar_pages}
-      breadcrumbs={[{"Pages", ~p"/projects/#{@project.slug}/pages"}, {"New", nil}]}
+      creating_content_type={@creating_content_type}
+      breadcrumbs={[{"New Page", nil}]}
     >
       <div class="p-6 max-w-xl">
         <h1 class="text-2xl font-bold mb-8">New Page</h1>
 
         <.form for={@form} id="new-page-form" phx-submit="save" class="space-y-4">
           <.input field={@form[:slug]} label="Slug" name="slug" required />
-          <div>
-            <label class="label">Directory (optional)</label>
-            <select name="directory_id" class="select select-bordered w-full">
-              <option value="">None (root)</option>
-              <option :for={dir <- @directories} value={dir.id}>
-                {dir.full_path}
-              </option>
-            </select>
-          </div>
+          <.input
+            type="select"
+            name="folder_id"
+            label="Folder (optional)"
+            prompt="None (root)"
+            options={Enum.map(@folders, &{&1.full_path, &1.id})}
+            value=""
+          />
           <.input
             field={@form[:parent_page_id]}
             label="Parent Page ID (optional)"
             name="parent_page_id"
           />
+          <.input
+            :if={length(@available_templates) > 1}
+            type="select"
+            name="template_slug"
+            label="Template"
+            options={Enum.map(@available_templates, &{&1.label, &1.slug})}
+            value="default"
+          />
           <div class="flex justify-end gap-2 mt-6">
-            <.link navigate={~p"/projects/#{@project.slug}/pages"} class="btn btn-ghost">
+            <.link navigate={~p"/projects/#{@project.slug}"} class="btn btn-ghost">
               Cancel
             </.link>
-            <button type="submit" class="btn btn-primary">Create Page</button>
+            <.button type="submit" class="btn btn-primary">Create Page</.button>
           </div>
         </.form>
       </div>

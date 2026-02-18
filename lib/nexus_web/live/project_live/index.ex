@@ -69,7 +69,7 @@ defmodule NexusWeb.ProjectLive.Index do
           :for={{id, project} <- @streams.projects}
           id={id}
           navigate={~p"/projects/#{project.slug}"}
-          class="card bg-base-200 hover:bg-base-300 transition-colors cursor-pointer"
+          class="card bg-gradient-to-br from-primary/10 to-primary/5 hover:from-primary/20 hover:to-primary/10 transition-all cursor-pointer"
         >
           <div class="card-body">
             <h2 class="card-title text-lg">{project.name}</h2>
@@ -103,7 +103,7 @@ defmodule NexusWeb.ProjectLive.Index do
               <.input field={@form[:is_public]} label="Public" type="checkbox" />
               <div class="flex justify-end gap-2 mt-6">
                 <.link patch={~p"/projects"} class="btn btn-ghost">Cancel</.link>
-                <button type="submit" class="btn btn-primary">Create Project</button>
+                <.button type="submit" class="btn btn-primary">Create Project</.button>
               </div>
             </.form>
           </div>

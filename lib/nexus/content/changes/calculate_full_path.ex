@@ -21,8 +21,8 @@ defmodule Nexus.Content.Changes.CalculateFullPath do
     resource = changeset.resource
 
     cond do
-      resource == Nexus.Content.Directory ->
-        resolve_directory_parent(changeset)
+      resource == Nexus.Content.Folder ->
+        resolve_folder_parent(changeset)
 
       resource == Nexus.Content.Page ->
         resolve_page_parent(changeset)
@@ -32,11 +32,11 @@ defmodule Nexus.Content.Changes.CalculateFullPath do
     end
   end
 
-  defp resolve_directory_parent(changeset) do
+  defp resolve_folder_parent(changeset) do
     parent_id = Ash.Changeset.get_attribute(changeset, :parent_id)
 
     if parent_id do
-      case Ash.get(Nexus.Content.Directory, parent_id, authorize?: false) do
+      case Ash.get(Nexus.Content.Folder, parent_id, authorize?: false) do
         {:ok, parent} -> to_string(parent.full_path)
         _ -> nil
       end
@@ -44,12 +44,12 @@ defmodule Nexus.Content.Changes.CalculateFullPath do
   end
 
   defp resolve_page_parent(changeset) do
-    directory_id = Ash.Changeset.get_attribute(changeset, :directory_id)
+    folder_id = Ash.Changeset.get_attribute(changeset, :folder_id)
     parent_page_id = Ash.Changeset.get_attribute(changeset, :parent_page_id)
 
     parts =
       [
-        if(directory_id, do: get_directory_path(directory_id)),
+        if(folder_id, do: get_folder_path(folder_id)),
         if(parent_page_id, do: get_page_path(parent_page_id))
       ]
       |> Enum.reject(&is_nil/1)
@@ -60,9 +60,9 @@ defmodule Nexus.Content.Changes.CalculateFullPath do
     end
   end
 
-  defp get_directory_path(directory_id) do
-    case Ash.get(Nexus.Content.Directory, directory_id, authorize?: false) do
-      {:ok, dir} -> to_string(dir.full_path)
+  defp get_folder_path(folder_id) do
+    case Ash.get(Nexus.Content.Folder, folder_id, authorize?: false) do
+      {:ok, folder} -> to_string(folder.full_path)
       _ -> nil
     end
   end

@@ -10,8 +10,8 @@ defmodule NexusWeb.ProjectApiKeyLive.Index do
     {"Pages Update", :pages_update},
     {"Pages Delete", :pages_delete},
     {"Pages Publish", :pages_publish},
-    {"Directories Read", :directories_read},
-    {"Directories Write", :directories_write},
+    {"Folders Read", :folders_read},
+    {"Folders Write", :folders_write},
     {"Full Access", :full_access}
   ]
 
@@ -93,8 +93,9 @@ defmodule NexusWeb.ProjectApiKeyLive.Index do
   end
 
   @impl true
-  def handle_event("reorder_tree_item", params, socket) do
-    NexusWeb.ContentTreeHandlers.handle_event("reorder_tree_item", params, socket)
+  def handle_event(event, params, socket)
+      when event in ~w(reorder_tree_item start_creating_page start_creating_folder cancel_inline_create save_inline_content) do
+    NexusWeb.ContentTreeHandlers.handle_event(event, params, socket)
   end
 
   defp list_api_keys(project, user) do
@@ -113,20 +114,21 @@ defmodule NexusWeb.ProjectApiKeyLive.Index do
       flash={@flash}
       project={@project}
       project_role={@project_role}
-      sidebar_directories={@sidebar_directories}
+      sidebar_folders={@sidebar_folders}
       sidebar_pages={@sidebar_pages}
+      creating_content_type={@creating_content_type}
       breadcrumbs={[{"API Keys", nil}]}
     >
       <div class="p-6">
         <div class="flex items-center justify-between mb-8">
           <h1 class="text-2xl font-bold">API Keys</h1>
-          <button
+          <.button
             :if={@project_role == :admin}
             phx-click="toggle_create"
             class="btn btn-primary btn-sm"
           >
             <.icon name="hero-plus" class="size-4" /> New Key
-          </button>
+          </.button>
         </div>
 
         <div :if={@new_key_raw} class="alert alert-info mb-6">
@@ -135,13 +137,13 @@ defmodule NexusWeb.ProjectApiKeyLive.Index do
             <p class="font-semibold">Save this key now - it won't be shown again:</p>
             <code class="block mt-1 text-sm font-mono break-all">{@new_key_raw}</code>
           </div>
-          <button phx-click="dismiss_key" class="btn btn-sm btn-ghost">Dismiss</button>
+          <.button phx-click="dismiss_key" class="btn btn-sm btn-ghost">Dismiss</.button>
         </div>
 
         <div :if={@show_create} class="card bg-base-200 mb-6">
           <div class="card-body">
             <h3 class="card-title text-base">Create API Key</h3>
-            <form id="create-api-key-form" phx-submit="create_key" class="space-y-4">
+            <.form for={%{}} id="create-api-key-form" phx-submit="create_key" class="space-y-4">
               <.input name="name" label="Name" value="" required />
               <fieldset>
                 <legend class="label">Scopes</legend>
@@ -162,12 +164,12 @@ defmodule NexusWeb.ProjectApiKeyLive.Index do
                 </div>
               </fieldset>
               <div class="flex justify-end gap-2">
-                <button type="button" phx-click="toggle_create" class="btn btn-ghost btn-sm">
+                <.button type="button" phx-click="toggle_create" class="btn btn-ghost btn-sm">
                   Cancel
-                </button>
-                <button type="submit" class="btn btn-primary btn-sm">Create</button>
+                </.button>
+                <.button type="submit" class="btn btn-primary btn-sm">Create</.button>
               </div>
-            </form>
+            </.form>
           </div>
         </div>
 
@@ -194,7 +196,7 @@ defmodule NexusWeb.ProjectApiKeyLive.Index do
             </div>
             <div class="flex items-center gap-2">
               <span :if={!key.is_active} class="badge badge-error badge-sm">Revoked</span>
-              <button
+              <.button
                 :if={key.is_active && @project_role == :admin}
                 phx-click="revoke_key"
                 phx-value-id={key.id}
@@ -202,7 +204,7 @@ defmodule NexusWeb.ProjectApiKeyLive.Index do
                 data-confirm="Revoke this API key?"
               >
                 Revoke
-              </button>
+              </.button>
             </div>
           </div>
         </div>

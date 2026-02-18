@@ -1,10 +1,81 @@
 defmodule NexusWeb.ContentTreeHandlers do
   @moduledoc """
-  Shared event handlers for content tree drag-and-drop operations.
+  Shared event handlers for content tree drag-and-drop and inline creation operations.
   Import this module's handle_event/3 into LiveViews that use the project layout.
   """
   import Phoenix.LiveView
   import Phoenix.Component, only: [assign: 3]
+
+  def handle_event("start_creating_page", _params, socket) do
+    {:noreply, assign(socket, :creating_content_type, :page)}
+  end
+
+  def handle_event("start_creating_folder", _params, socket) do
+    {:noreply, assign(socket, :creating_content_type, :folder)}
+  end
+
+  def handle_event("cancel_inline_create", _params, socket) do
+    {:noreply, assign(socket, :creating_content_type, nil)}
+  end
+
+  def handle_event("save_inline_content", %{"type" => "page", "name" => name}, socket)
+      when name != "" do
+    attrs = %{
+      "slug" => name,
+      "project_id" => socket.assigns.project.id
+    }
+
+    case Nexus.Content.Page.create(attrs, actor: socket.assigns.current_user) do
+      {:ok, page} ->
+        {folders, pages} =
+          load_sidebar_data(socket.assigns.project.id, socket.assigns.current_user)
+
+        {:noreply,
+         socket
+         |> assign(:creating_content_type, nil)
+         |> assign(:sidebar_folders, folders)
+         |> assign(:sidebar_pages, pages)
+         |> push_navigate(to: "/projects/#{socket.assigns.project.slug}/pages/#{page.id}/edit")}
+
+      {:error, _} ->
+        {:noreply,
+         socket
+         |> assign(:creating_content_type, nil)
+         |> put_flash(:error, "Failed to create page")}
+    end
+  end
+
+  def handle_event("save_inline_content", %{"type" => "folder", "name" => name}, socket)
+      when name != "" do
+    attrs = %{
+      "name" => name,
+      "slug" => Slug.slugify(name),
+      "project_id" => socket.assigns.project.id
+    }
+
+    case Nexus.Content.Folder.create(attrs, actor: socket.assigns.current_user) do
+      {:ok, _folder} ->
+        {folders, pages} =
+          load_sidebar_data(socket.assigns.project.id, socket.assigns.current_user)
+
+        {:noreply,
+         socket
+         |> assign(:creating_content_type, nil)
+         |> assign(:sidebar_folders, folders)
+         |> assign(:sidebar_pages, pages)
+         |> put_flash(:info, "Folder created")}
+
+      {:error, _} ->
+        {:noreply,
+         socket
+         |> assign(:creating_content_type, nil)
+         |> put_flash(:error, "Failed to create folder")}
+    end
+  end
+
+  def handle_event("save_inline_content", _params, socket) do
+    {:noreply, assign(socket, :creating_content_type, nil)}
+  end
 
   def handle_event("reorder_tree_item", params, socket) do
     %{
@@ -20,8 +91,8 @@ defmodule NexusWeb.ContentTreeHandlers do
 
     result =
       case item_type do
-        "directory" ->
-          reorder_directory(item_id, parent_id, siblings, user)
+        "folder" ->
+          reorder_folder(item_id, parent_id, siblings, user)
 
         "page" ->
           reorder_page(item_id, parent_type, parent_id, siblings, user)
@@ -29,11 +100,11 @@ defmodule NexusWeb.ContentTreeHandlers do
 
     case result do
       :ok ->
-        {directories, pages} = load_sidebar_data(project.id, user)
+        {folders, pages} = load_sidebar_data(project.id, user)
 
         {:noreply,
          socket
-         |> assign(:sidebar_directories, directories)
+         |> assign(:sidebar_folders, folders)
          |> assign(:sidebar_pages, pages)
          |> push_event("tree_updated", %{success: true})}
 
@@ -45,24 +116,24 @@ defmodule NexusWeb.ContentTreeHandlers do
     end
   end
 
-  defp reorder_directory(directory_id, new_parent_id, siblings, user) do
+  defp reorder_folder(folder_id, new_parent_id, siblings, user) do
     parent_id = if new_parent_id == "", do: nil, else: new_parent_id
 
-    case Ash.get(Nexus.Content.Directory, directory_id, actor: user) do
-      {:ok, directory} ->
-        position = find_position(siblings, directory_id)
+    case Ash.get(Nexus.Content.Folder, folder_id, actor: user) do
+      {:ok, folder} ->
+        position = find_position(siblings, folder_id)
 
-        case Ash.update(directory, %{parent_id: parent_id, position: position}, actor: user) do
+        case Ash.update(folder, %{parent_id: parent_id, position: position}, actor: user) do
           {:ok, _} ->
-            update_sibling_positions(siblings, Nexus.Content.Directory, user)
+            update_sibling_positions(siblings, Nexus.Content.Folder, user)
             :ok
 
           {:error, _} ->
-            {:error, "Failed to update directory"}
+            {:error, "Failed to update folder"}
         end
 
       {:error, _} ->
-        {:error, "Directory not found"}
+        {:error, "Folder not found"}
     end
   end
 
@@ -70,10 +141,10 @@ defmodule NexusWeb.ContentTreeHandlers do
     attrs =
       case parent_type do
         "root" ->
-          %{directory_id: nil, parent_page_id: nil}
+          %{folder_id: nil, parent_page_id: nil}
 
-        "directory" ->
-          %{directory_id: parent_id, parent_page_id: nil}
+        "folder" ->
+          %{folder_id: parent_id, parent_page_id: nil}
 
         "page" ->
           %{parent_page_id: parent_id}
@@ -117,9 +188,9 @@ defmodule NexusWeb.ContentTreeHandlers do
   end
 
   defp load_sidebar_data(project_id, user) do
-    directories =
-      case Nexus.Content.Directory.for_project(project_id, actor: user) do
-        {:ok, dirs} -> dirs
+    folders =
+      case Nexus.Content.Folder.for_project(project_id, actor: user) do
+        {:ok, folders} -> folders
         _ -> []
       end
 
@@ -129,6 +200,6 @@ defmodule NexusWeb.ContentTreeHandlers do
         _ -> []
       end
 
-    {directories, pages}
+    {folders, pages}
   end
 end

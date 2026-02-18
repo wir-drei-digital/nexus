@@ -23,7 +23,16 @@ defmodule Nexus.Projects.Project do
 
     create :create do
       primary? true
-      accept [:name, :slug, :description, :is_public, :default_locale]
+
+      accept [
+        :name,
+        :slug,
+        :description,
+        :is_public,
+        :default_locale,
+        :available_locales,
+        :available_templates
+      ]
 
       change Nexus.Projects.Changes.CreateOwnerMembership
     end
@@ -34,7 +43,15 @@ defmodule Nexus.Projects.Project do
 
     update :update do
       primary? true
-      accept [:name, :description, :is_public, :default_locale]
+
+      accept [
+        :name,
+        :description,
+        :is_public,
+        :default_locale,
+        :available_locales,
+        :available_templates
+      ]
     end
   end
 
@@ -90,13 +107,25 @@ defmodule Nexus.Projects.Project do
       public? true
     end
 
+    attribute :available_locales, {:array, :string} do
+      default ["en", "de", "fr", "es", "it", "pt", "nl", "pl", "ru", "zh", "ja", "ko", "ar"]
+      allow_nil? false
+      public? true
+    end
+
+    attribute :available_templates, {:array, :string} do
+      default ["default"]
+      allow_nil? false
+      public? true
+    end
+
     create_timestamp :inserted_at
     update_timestamp :updated_at
   end
 
   relationships do
     has_many :memberships, Nexus.Projects.Membership
-    has_many :directories, Nexus.Content.Directory
+    has_many :folders, Nexus.Content.Folder
     has_many :pages, Nexus.Content.Page
   end
 
@@ -105,7 +134,7 @@ defmodule Nexus.Projects.Project do
       filter expr(is_nil(deleted_at))
     end
 
-    count :directory_count, :directories
+    count :folder_count, :folders
   end
 
   identities do

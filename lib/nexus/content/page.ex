@@ -35,9 +35,10 @@ defmodule Nexus.Content.Page do
 
     create :create do
       primary? true
-      accept [:slug, :position, :project_id, :directory_id, :parent_page_id]
+      accept [:slug, :position, :project_id, :folder_id, :parent_page_id, :template_slug]
 
       change Nexus.Content.Changes.CalculateFullPath
+      change Nexus.Content.Changes.ValidateTemplate
     end
 
     read :get_by_path do
@@ -58,7 +59,7 @@ defmodule Nexus.Content.Page do
 
     update :update do
       primary? true
-      accept [:slug, :position, :directory_id, :parent_page_id]
+      accept [:slug, :position, :folder_id, :parent_page_id, :template_slug]
       require_atomic? false
 
       change Nexus.Content.Changes.CalculateFullPath
@@ -145,6 +146,12 @@ defmodule Nexus.Content.Page do
       public? true
     end
 
+    attribute :template_slug, :string do
+      default "default"
+      allow_nil? false
+      public? true
+    end
+
     attribute :position, :integer do
       default 0
       allow_nil? false
@@ -164,7 +171,7 @@ defmodule Nexus.Content.Page do
       allow_nil? false
     end
 
-    belongs_to :directory, Nexus.Content.Directory
+    belongs_to :folder, Nexus.Content.Folder
     belongs_to :parent_page, Nexus.Content.Page
 
     has_many :sub_pages, Nexus.Content.Page do

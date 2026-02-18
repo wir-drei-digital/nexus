@@ -1,0 +1,360 @@
+/* TipTap / ProseMirror editor styles */
+
+/* Tippy.js popup reset — we provide our own styling on inner elements */
+.tippy-box {
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  color: inherit;
+  font-size: inherit;
+}
+
+.tippy-content {
+  padding: 0;
+}
+
+.tippy-arrow { display: none; }
+
+/* Editor base */
+.ProseMirror {
+  outline: none;
+  min-height: 300px;
+  padding: 0;
+}
+
+.ProseMirror > * + * {
+  margin-top: 0.75em;
+}
+
+/* Gapcursor — use theme color instead of default black */
+.ProseMirror .ProseMirror-gapcursor:after {
+  border-top-color: var(--color-base-content);
+}
+
+/* Placeholder */
+.ProseMirror p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  color: oklch(from var(--color-base-content) l c h / 0.25);
+  pointer-events: none;
+  height: 0;
+}
+
+/* Headings */
+.ProseMirror h1 { font-size: 2em; font-weight: 700; line-height: 1.2; }
+.ProseMirror h2 { font-size: 1.5em; font-weight: 700; line-height: 1.3; }
+.ProseMirror h3 { font-size: 1.25em; font-weight: 600; line-height: 1.4; }
+.ProseMirror h4 { font-size: 1.125em; font-weight: 600; line-height: 1.4; }
+.ProseMirror h5 { font-size: 1em; font-weight: 600; line-height: 1.5; }
+.ProseMirror h6 { font-size: 0.875em; font-weight: 600; line-height: 1.5; }
+
+/* Lists */
+.ProseMirror ul {
+  list-style-type: disc;
+  padding-left: 1.5em;
+}
+
+.ProseMirror ol {
+  list-style-type: decimal;
+  padding-left: 1.5em;
+}
+
+.ProseMirror li > p {
+  margin: 0;
+}
+
+/* Blockquote */
+.ProseMirror blockquote {
+  border-left: 3px solid oklch(from var(--color-base-content) l c h / 0.2);
+  padding-left: 1em;
+  font-style: italic;
+  color: oklch(from var(--color-base-content) l c h / 0.7);
+}
+
+/* Code block */
+.ProseMirror pre {
+  background: var(--color-base-200);
+  border-radius: var(--radius-box);
+  padding: 0.75em 1em;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+  font-size: 0.875em;
+  overflow-x: auto;
+}
+
+.ProseMirror pre code {
+  background: none;
+  padding: 0;
+  border-radius: 0;
+  font-size: inherit;
+  color: inherit;
+}
+
+/* Inline code */
+.ProseMirror code {
+  background: var(--color-base-200);
+  border-radius: 0.25em;
+  padding: 0.15em 0.3em;
+  font-size: 0.875em;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+}
+
+/* Horizontal rule */
+.ProseMirror hr {
+  border: none;
+  border-top: 1px solid oklch(from var(--color-base-content) l c h / 0.15);
+  margin: 1.5em 0;
+}
+
+/* Images */
+.ProseMirror img {
+  max-width: 100%;
+  height: auto;
+  border-radius: var(--radius-box);
+}
+
+/* Links */
+.ProseMirror a {
+  color: var(--color-primary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.ProseMirror a:hover {
+  opacity: 0.8;
+}
+
+/* Selected node outline */
+.ProseMirror .ProseMirror-selectednode {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+  border-radius: var(--radius-box);
+}
+
+/* Dragging state */
+.ProseMirror .is-dragging {
+  opacity: 0.4;
+  outline: 2px dashed oklch(from var(--color-primary) l c h / 0.3);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* ========= Slash command menu ========= */
+.slash-command-menu {
+  background: var(--color-base-100);
+  border: 1px solid oklch(from var(--color-base-content) l c h / 0.15);
+  border-radius: var(--radius-box);
+  box-shadow: 0 4px 16px oklch(0% 0 0 / 0.15);
+  padding: 0.25rem;
+  min-width: 200px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.slash-command-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: calc(var(--radius-box) - 2px);
+  cursor: pointer;
+  font-size: 0.875rem;
+  color: var(--color-base-content);
+  transition: background-color 0.1s;
+}
+
+.slash-command-item:hover,
+.slash-command-item.is-selected {
+  background: var(--color-base-200);
+}
+
+.slash-command-item-icon {
+  width: 1.25rem;
+  height: 1.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.5;
+}
+
+/* ========= Bubble menu (floating toolbar) ========= */
+.bubble-menu {
+  background: var(--color-base-100);
+  border: 1px solid oklch(from var(--color-base-content) l c h / 0.15);
+  border-radius: var(--radius-box);
+  box-shadow: 0 4px 16px oklch(0% 0 0 / 0.15);
+  padding: 0.125rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.125rem;
+}
+
+.bubble-menu button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border: none;
+  background: none;
+  border-radius: calc(var(--radius-box) - 2px);
+  cursor: pointer;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: oklch(from var(--color-base-content) l c h / 0.7);
+  transition: background-color 0.1s, color 0.1s;
+}
+
+.bubble-menu button:hover {
+  background: var(--color-base-200);
+  color: var(--color-base-content);
+}
+
+.bubble-menu button.is-active {
+  background: var(--color-primary);
+  color: var(--color-primary-content);
+}
+
+/* Bubble menu separator */
+.bubble-menu-separator {
+  width: 1px;
+  height: 1.5rem;
+  background: oklch(from var(--color-base-content) l c h / 0.15);
+  align-self: center;
+  margin: 0 0.125rem;
+}
+
+/* Bubble menu link input */
+.bubble-menu-link-input {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: 0.25rem;
+  border-top: 1px solid oklch(from var(--color-base-content) l c h / 0.1);
+  margin-top: 0.125rem;
+}
+
+.bubble-menu-url-input {
+  width: 100%;
+  border: 1px solid oklch(from var(--color-base-content) l c h / 0.15);
+  background: var(--color-base-200);
+  color: var(--color-base-content);
+  border-radius: calc(var(--radius-box) - 2px);
+  padding: 0.25rem 0.5rem;
+  font-size: 0.75rem;
+  outline: none;
+}
+
+.bubble-menu-url-input:focus {
+  border-color: var(--color-primary);
+}
+
+/* ========= Drag handle ========= */
+.drag-handle {
+  position: absolute;
+  width: 20px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: grab;
+  border-radius: 4px;
+  color: oklch(from var(--color-base-content) l c h / 0.35);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s, color 0.15s, background-color 0.15s;
+  z-index: 10;
+  user-select: none;
+}
+
+.drag-handle:hover {
+  color: oklch(from var(--color-base-content) l c h / 0.7);
+  background: oklch(from var(--color-base-content) l c h / 0.08);
+}
+
+/* Drop indicator */
+.drop-indicator {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--color-primary);
+  border-radius: 1px;
+  display: none;
+  pointer-events: none;
+  z-index: 10;
+}
+
+.drop-indicator::before,
+.drop-indicator::after {
+  content: "";
+  position: absolute;
+  top: -3px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-primary);
+}
+
+.drop-indicator::before { left: 0; }
+.drop-indicator::after { right: 0; }
+
+/* ========= Block context menu ========= */
+.block-context-menu {
+  background: var(--color-base-100);
+  border: 1px solid oklch(from var(--color-base-content) l c h / 0.12);
+  border-radius: var(--radius-box);
+  box-shadow:
+    0 4px 6px -1px oklch(0% 0 0 / 0.1),
+    0 10px 15px -3px oklch(0% 0 0 / 0.15);
+  padding: 0.25rem;
+  min-width: 200px;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.block-context-menu-label {
+  padding: 0.375rem 0.75rem 0.25rem;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: oklch(from var(--color-base-content) l c h / 0.4);
+  user-select: none;
+}
+
+.block-context-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.375rem 0.75rem;
+  border-radius: calc(var(--radius-box) - 2px);
+  cursor: pointer;
+  font-size: 0.8125rem;
+  color: var(--color-base-content);
+  background: none;
+  border: none;
+  width: 100%;
+  text-align: left;
+  transition: background-color 0.1s;
+}
+
+.block-context-menu-item:hover {
+  background: var(--color-base-200);
+}
+
+.block-context-menu-icon {
+  width: 1.25rem;
+  height: 1.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.5;
+  font-size: 0.75rem;
+}
+
+.block-context-menu-divider {
+  height: 1px;
+  background: oklch(from var(--color-base-content) l c h / 0.08);
+  margin: 0.25rem 0;
+}

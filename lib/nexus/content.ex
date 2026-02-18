@@ -3,7 +3,7 @@ defmodule Nexus.Content do
     otp_app: :nexus
 
   resources do
-    resource Nexus.Content.Directory
+    resource Nexus.Content.Folder
     resource Nexus.Content.Page
     resource Nexus.Content.PageVersion
     resource Nexus.Content.PageLocale

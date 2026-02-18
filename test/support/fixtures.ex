@@ -28,14 +28,14 @@ defmodule Nexus.Fixtures do
     Nexus.Projects.Project.create!(params, actor: user)
   end
 
-  def create_directory(project, user, attrs \\ %{}) do
+  def create_folder(project, user, attrs \\ %{}) do
     params =
       Map.merge(
         %{name: "Test Dir", slug: unique_slug(), project_id: project.id},
         attrs
       )
 
-    Nexus.Content.Directory.create!(params, actor: user)
+    Nexus.Content.Folder.create!(params, actor: user)
   end
 
   def create_page(project, user, attrs \\ %{}) do
@@ -55,7 +55,7 @@ defmodule Nexus.Fixtures do
           page_id: page.id,
           locale: "en",
           title: "Test Page",
-          blocks: [],
+          template_data: %{"body" => %{"type" => "doc", "content" => []}},
           created_by_id: user.id
         },
         attrs

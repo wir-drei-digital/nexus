@@ -1,4 +1,4 @@
-defmodule Nexus.Content.Directory do
+defmodule Nexus.Content.Folder do
   use Ash.Resource,
     otp_app: :nexus,
     domain: Nexus.Content,
@@ -6,7 +6,7 @@ defmodule Nexus.Content.Directory do
     authorizers: [Ash.Policy.Authorizer]
 
   postgres do
-    table "directories"
+    table "folders"
     repo Nexus.Repo
   end
 
@@ -105,9 +105,9 @@ defmodule Nexus.Content.Directory do
       allow_nil? false
     end
 
-    belongs_to :parent, Nexus.Content.Directory
+    belongs_to :parent, Nexus.Content.Folder
 
-    has_many :children, Nexus.Content.Directory do
+    has_many :children, Nexus.Content.Folder do
       destination_attribute :parent_id
     end
 

@@ -1,18 +1,10 @@
 defmodule NexusWeb.PageLive.Edit do
   use NexusWeb, :live_view
 
+  alias Nexus.Content.Templates.{Registry, Renderer, Template}
+
   on_mount {NexusWeb.LiveUserAuth, :live_user_required}
   on_mount {NexusWeb.ProjectScope, :default}
-
-  @block_types [
-    {"Text", "text", "hero-bars-3"},
-    {"Heading", "heading", "hero-hashtag"},
-    {"Image", "image", "hero-photo"},
-    {"Code", "code", "hero-code-bracket"},
-    {"Quote", "quote", "hero-chat-bubble-bottom-center-text"},
-    {"List", "list", "hero-list-bullet"},
-    {"Divider", "divider", "hero-minus"}
-  ]
 
   @impl true
   def mount(%{"id" => page_id}, _session, socket) do
@@ -24,130 +16,161 @@ defmodule NexusWeb.PageLive.Edit do
         locale = project.default_locale
         version = load_current_version(page, locale)
         locales = load_locales(page, user)
+        locale_map = Map.new(locales, &{&1.locale, &1})
+        template = Registry.get(page.template_slug) || Registry.get("default")
+        template_data = extract_template_data(version, template)
+        available_templates = Registry.available_for_project(project.available_templates)
 
         {:ok,
          socket
          |> assign(:page_title, "Edit - #{page.slug}")
          |> assign(:page, page)
+         |> assign(:template, template)
+         |> assign(:template_data, template_data)
+         |> assign(:available_templates, available_templates)
          |> assign(:current_locale, locale)
          |> assign(:locales, locales)
+         |> assign(:locale_map, locale_map)
          |> assign(:version, version)
-         |> assign(:blocks, (version && version.blocks) || [])
+         |> assign(:content_html, (version && version.content_html) || "")
          |> assign(:title, (version && version.title) || "")
          |> assign(:meta_description, (version && version.meta_description) || "")
          |> assign(:meta_keywords, (version && Enum.join(version.meta_keywords, ", ")) || "")
-         |> assign(:block_types, @block_types)
-         |> assign(:saving, false)}
+         |> assign(:save_status, if(version, do: :saved, else: :unsaved))
+         |> assign(:auto_save_ref, nil)}
 
       {:error, _} ->
         {:ok,
          socket
          |> put_flash(:error, "Page not found")
-         |> push_navigate(to: ~p"/projects/#{project.slug}/pages")}
+         |> push_navigate(to: ~p"/projects/#{project.slug}")}
     end
   end
 
   @impl true
   def handle_event("switch_locale", %{"locale" => locale}, socket) do
-    version = load_current_version(socket.assigns.page, locale)
+    socket = cancel_auto_save_timer(socket)
+    page = socket.assigns.page
+    user = socket.assigns.current_user
+    locale_map = socket.assigns.locale_map
+    template = socket.assigns.template
+
+    # Create locale if it doesn't exist yet
+    {socket, _locale_map} =
+      if Map.has_key?(locale_map, locale) do
+        {socket, locale_map}
+      else
+        case Nexus.Content.PageLocale.create(%{page_id: page.id, locale: locale}, actor: user) do
+          {:ok, page_locale} ->
+            locales = [page_locale | socket.assigns.locales]
+            new_map = Map.put(locale_map, locale, page_locale)
+            {assign(socket, locales: locales, locale_map: new_map), new_map}
+
+          {:error, _} ->
+            {socket, locale_map}
+        end
+      end
+
+    version = load_current_version(page, locale)
+    template_data = extract_template_data(version, template)
+
+    # Push content to each rich_text editor
+    push_events =
+      Enum.reduce(template.sections, socket, fn section, sock ->
+        if section.type == :rich_text do
+          key = Atom.to_string(section.key)
+          content = Map.get(template_data, key, Template.default_data(template)[key])
+          push_event(sock, "set_section_content_#{key}", %{content: content})
+        else
+          sock
+        end
+      end)
+
+    {:noreply,
+     push_events
+     |> assign(:current_locale, locale)
+     |> assign(:version, version)
+     |> assign(:template_data, template_data)
+     |> assign(:content_html, (version && version.content_html) || "")
+     |> assign(:title, (version && version.title) || "")
+     |> assign(:meta_description, (version && version.meta_description) || "")
+     |> assign(:meta_keywords, (version && Enum.join(version.meta_keywords, ", ")) || "")
+     |> assign(:save_status, if(version, do: :saved, else: :unsaved))}
+  end
+
+  @impl true
+  def handle_event("section_content_changed", %{"key" => key, "content" => content}, socket) do
+    template_data = Map.put(socket.assigns.template_data, key, content)
+    content_html = render_content_html(socket.assigns.template, template_data)
 
     {:noreply,
      socket
-     |> assign(:current_locale, locale)
-     |> assign(:version, version)
-     |> assign(:blocks, (version && version.blocks) || [])
-     |> assign(:title, (version && version.title) || "")
-     |> assign(:meta_description, (version && version.meta_description) || "")
-     |> assign(:meta_keywords, (version && Enum.join(version.meta_keywords, ", ")) || "")}
+     |> assign(:template_data, template_data)
+     |> assign(:content_html, content_html)}
   end
 
   @impl true
-  def handle_event("add_locale", %{"locale" => locale}, socket) when locale != "" do
-    page = socket.assigns.page
-    user = socket.assigns.current_user
+  def handle_event("update_template_field", %{"section" => section_map}, socket)
+      when is_map(section_map) do
+    template = socket.assigns.template
 
-    case Nexus.Content.PageLocale.create(
-           %{page_id: page.id, locale: locale},
-           actor: user
-         ) do
-      {:ok, _} ->
-        locales = load_locales(page, user)
+    template_data =
+      Enum.reduce(section_map, socket.assigns.template_data, fn {key, value}, data ->
+        section = Template.get_section(template, key)
+        coerced = coerce_value(section, value)
+        Map.put(data, key, coerced)
+      end)
 
-        {:noreply,
-         socket
-         |> assign(:locales, locales)
-         |> assign(:current_locale, locale)
-         |> assign(:version, nil)
-         |> assign(:blocks, [])
-         |> assign(:title, "")
-         |> assign(:meta_description, "")
-         |> assign(:meta_keywords, "")}
+    content_html = render_content_html(template, template_data)
 
-      {:error, _} ->
-        {:noreply, put_flash(socket, :error, "Failed to add locale")}
-    end
+    socket =
+      socket
+      |> cancel_auto_save_timer()
+      |> assign(:template_data, template_data)
+      |> assign(:content_html, content_html)
+      |> assign(:save_status, :unsaved)
+
+    ref = Process.send_after(self(), :auto_save_meta, 3_000)
+
+    {:noreply, assign(socket, :auto_save_ref, ref)}
   end
 
   @impl true
-  def handle_event("add_block", %{"type" => type}, socket) do
-    new_block = build_default_block(type, length(socket.assigns.blocks))
-    blocks = socket.assigns.blocks ++ [new_block]
-    {:noreply, assign(socket, :blocks, blocks)}
+  def handle_event("mark_unsaved", _params, socket) do
+    {:noreply, assign(socket, :save_status, :unsaved)}
   end
 
   @impl true
-  def handle_event("remove_block", %{"index" => index_str}, socket) do
-    index = String.to_integer(index_str)
-    blocks = List.delete_at(socket.assigns.blocks, index)
-    blocks = reindex_blocks(blocks)
-    {:noreply, assign(socket, :blocks, blocks)}
-  end
+  def handle_event("auto_save", %{"key" => key, "content" => content}, socket) do
+    template_data = Map.put(socket.assigns.template_data, key, content)
+    content_html = render_content_html(socket.assigns.template, template_data)
 
-  @impl true
-  def handle_event("move_block_up", %{"index" => index_str}, socket) do
-    index = String.to_integer(index_str)
-
-    if index > 0 do
-      blocks = swap_blocks(socket.assigns.blocks, index, index - 1)
-      {:noreply, assign(socket, :blocks, reindex_blocks(blocks))}
-    else
-      {:noreply, socket}
-    end
-  end
-
-  @impl true
-  def handle_event("move_block_down", %{"index" => index_str}, socket) do
-    index = String.to_integer(index_str)
-
-    if index < length(socket.assigns.blocks) - 1 do
-      blocks = swap_blocks(socket.assigns.blocks, index, index + 1)
-      {:noreply, assign(socket, :blocks, reindex_blocks(blocks))}
-    else
-      {:noreply, socket}
-    end
-  end
-
-  @impl true
-  def handle_event("update_block", %{"index" => index_str} = params, socket) do
-    index = String.to_integer(index_str)
-    block = Enum.at(socket.assigns.blocks, index)
-
-    updated_data = update_block_data(block, params)
-    updated_block = %{block | data: updated_data}
-    blocks = List.replace_at(socket.assigns.blocks, index, updated_block)
-    {:noreply, assign(socket, :blocks, blocks)}
+    {:noreply,
+     socket
+     |> cancel_auto_save_timer()
+     |> assign(:template_data, template_data)
+     |> assign(:content_html, content_html)
+     |> assign(:save_status, :saving)
+     |> then(&do_auto_save/1)}
   end
 
   @impl true
   def handle_event("update_meta", params, socket) do
-    {:noreply,
-     socket
-     |> assign(:title, Map.get(params, "title", socket.assigns.title))
-     |> assign(
-       :meta_description,
-       Map.get(params, "meta_description", socket.assigns.meta_description)
-     )
-     |> assign(:meta_keywords, Map.get(params, "meta_keywords", socket.assigns.meta_keywords))}
+    socket = cancel_auto_save_timer(socket)
+
+    socket =
+      socket
+      |> assign(:title, Map.get(params, "title", socket.assigns.title))
+      |> assign(
+        :meta_description,
+        Map.get(params, "meta_description", socket.assigns.meta_description)
+      )
+      |> assign(:meta_keywords, Map.get(params, "meta_keywords", socket.assigns.meta_keywords))
+      |> assign(:save_status, :unsaved)
+
+    ref = Process.send_after(self(), :auto_save_meta, 3_000)
+
+    {:noreply, assign(socket, :auto_save_ref, ref)}
   end
 
   @impl true
@@ -156,13 +179,8 @@ defmodule NexusWeb.PageLive.Edit do
     page = socket.assigns.page
     locale = socket.assigns.current_locale
 
-    keywords =
-      socket.assigns.meta_keywords
-      |> String.split(",")
-      |> Enum.map(&String.trim/1)
-      |> Enum.reject(&(&1 == ""))
-
-    blocks_data = Enum.map(socket.assigns.blocks, &serialize_block/1)
+    keywords = parse_keywords(socket.assigns.meta_keywords)
+    content_html = render_content_html(socket.assigns.template, socket.assigns.template_data)
 
     case Nexus.Content.PageVersion.create(
            %{
@@ -171,7 +189,8 @@ defmodule NexusWeb.PageLive.Edit do
              title: socket.assigns.title,
              meta_description: socket.assigns.meta_description,
              meta_keywords: keywords,
-             blocks: blocks_data,
+             template_data: socket.assigns.template_data,
+             content_html: content_html,
              created_by_id: user.id
            },
            actor: user
@@ -180,6 +199,7 @@ defmodule NexusWeb.PageLive.Edit do
         {:noreply,
          socket
          |> assign(:version, version)
+         |> assign(:save_status, :saved)
          |> put_flash(:info, "Version #{version.version_number} saved")}
 
       {:error, _} ->
@@ -235,9 +255,13 @@ defmodule NexusWeb.PageLive.Edit do
              ) do
           {:ok, _} ->
             locales = load_locales(page, user)
+            locale_map = Map.new(locales, &{&1.locale, &1})
 
             {:noreply,
-             socket |> assign(:locales, locales) |> put_flash(:info, "Locale published")}
+             socket
+             |> assign(:locales, locales)
+             |> assign(:locale_map, locale_map)
+             |> put_flash(:info, "Locale published")}
 
           {:error, _} ->
             {:noreply, put_flash(socket, :error, "Failed to publish locale")}
@@ -251,8 +275,131 @@ defmodule NexusWeb.PageLive.Edit do
   end
 
   @impl true
-  def handle_event("reorder_tree_item", params, socket) do
-    NexusWeb.ContentTreeHandlers.handle_event("reorder_tree_item", params, socket)
+  def handle_event("change_template", %{"template_slug" => slug}, socket) do
+    user = socket.assigns.current_user
+    page = socket.assigns.page
+
+    case Registry.get(slug) do
+      nil ->
+        {:noreply, put_flash(socket, :error, "Template not found")}
+
+      new_template ->
+        case Ash.update(page, %{template_slug: slug}, action: :update, actor: user) do
+          {:ok, updated_page} ->
+            # Migrate existing template_data: keep values for sections that exist in both
+            old_data = socket.assigns.template_data
+            default_data = Template.default_data(new_template)
+
+            new_data =
+              Map.new(new_template.sections, fn section ->
+                key = Atom.to_string(section.key)
+                {key, Map.get(old_data, key) || Map.get(default_data, key)}
+              end)
+
+            # Push new content to rich text editors
+            socket =
+              Enum.reduce(new_template.sections, socket, fn section, sock ->
+                if section.type == :rich_text do
+                  key = Atom.to_string(section.key)
+
+                  push_event(sock, "set_section_content_#{key}", %{
+                    content: Map.get(new_data, key)
+                  })
+                else
+                  sock
+                end
+              end)
+
+            {:noreply,
+             socket
+             |> assign(:page, updated_page)
+             |> assign(:template, new_template)
+             |> assign(:template_data, new_data)
+             |> assign(:save_status, :unsaved)
+             |> put_flash(:info, "Template changed to #{new_template.label}")}
+
+          {:error, _} ->
+            {:noreply, put_flash(socket, :error, "Failed to change template")}
+        end
+    end
+  end
+
+  @impl true
+  def handle_event(event, params, socket)
+      when event in ~w(reorder_tree_item start_creating_page start_creating_folder cancel_inline_create save_inline_content) do
+    NexusWeb.ContentTreeHandlers.handle_event(event, params, socket)
+  end
+
+  @impl true
+  def handle_info(:auto_save_meta, socket) do
+    {:noreply,
+     socket
+     |> assign(:save_status, :saving)
+     |> assign(:auto_save_ref, nil)
+     |> then(&do_auto_save/1)}
+  end
+
+  defp do_auto_save(socket) do
+    user = socket.assigns.current_user
+    page = socket.assigns.page
+    locale = socket.assigns.current_locale
+    keywords = parse_keywords(socket.assigns.meta_keywords)
+    content_html = render_content_html(socket.assigns.template, socket.assigns.template_data)
+
+    attrs = %{
+      title: socket.assigns.title,
+      meta_description: socket.assigns.meta_description,
+      meta_keywords: keywords,
+      template_data: socket.assigns.template_data,
+      content_html: content_html
+    }
+
+    case socket.assigns.version do
+      nil ->
+        # No version yet — create the first one
+        create_attrs =
+          Map.merge(attrs, %{
+            page_id: page.id,
+            locale: locale,
+            created_by_id: user.id
+          })
+
+        case Nexus.Content.PageVersion.create(create_attrs, actor: user) do
+          {:ok, version} ->
+            socket
+            |> assign(:version, version)
+            |> assign(:save_status, :saved)
+
+          {:error, _} ->
+            assign(socket, :save_status, :error)
+        end
+
+      version ->
+        case Ash.update(version, attrs, action: :auto_save, actor: user) do
+          {:ok, updated} ->
+            socket
+            |> assign(:version, updated)
+            |> assign(:save_status, :saved)
+
+          {:error, _} ->
+            assign(socket, :save_status, :error)
+        end
+    end
+  end
+
+  defp cancel_auto_save_timer(socket) do
+    if ref = socket.assigns.auto_save_ref do
+      Process.cancel_timer(ref)
+    end
+
+    assign(socket, :auto_save_ref, nil)
+  end
+
+  defp parse_keywords(str) do
+    str
+    |> String.split(",")
+    |> Enum.map(&String.trim/1)
+    |> Enum.reject(&(&1 == ""))
   end
 
   defp load_current_version(page, locale) do
@@ -269,106 +416,33 @@ defmodule NexusWeb.PageLive.Edit do
     end
   end
 
-  defp build_default_block(type, position) do
-    id = Ash.UUID.generate()
+  defp extract_template_data(nil, template), do: Template.default_data(template)
 
-    data =
-      case type do
-        "text" -> %{type: :text, value: %{content: ""}}
-        "heading" -> %{type: :heading, value: %{content: "", level: 2}}
-        "image" -> %{type: :image, value: %{url: "", alt: "", caption: ""}}
-        "code" -> %{type: :code, value: %{content: "", language: ""}}
-        "quote" -> %{type: :quote, value: %{content: "", attribution: ""}}
-        "list" -> %{type: :list, value: %{style: :unordered, items: [""]}}
-        "divider" -> %{type: :divider, value: %{}}
-      end
-
-    %{id: id, type: data.type, data: data, position: position}
-  end
-
-  defp update_block_data(block, params) do
-    case block.type do
-      :text ->
-        %{type: :text, value: %{content: params["content"] || ""}}
-
-      :heading ->
-        %{
-          type: :heading,
-          value: %{
-            content: params["content"] || "",
-            level: String.to_integer(params["level"] || "2")
-          }
-        }
-
-      :image ->
-        %{
-          type: :image,
-          value: %{
-            url: params["url"] || "",
-            alt: params["alt"] || "",
-            caption: params["caption"] || ""
-          }
-        }
-
-      :code ->
-        %{
-          type: :code,
-          value: %{content: params["content"] || "", language: params["language"] || ""}
-        }
-
-      :quote ->
-        %{
-          type: :quote,
-          value: %{content: params["content"] || "", attribution: params["attribution"] || ""}
-        }
-
-      :list ->
-        items =
-          (params["items"] || "")
-          |> String.split("\n")
-          |> Enum.map(&String.trim/1)
-          |> Enum.reject(&(&1 == ""))
-
-        style =
-          if params["style"] == "ordered", do: :ordered, else: :unordered
-
-        %{type: :list, value: %{style: style, items: items}}
-
-      :divider ->
-        %{type: :divider, value: %{}}
+  defp extract_template_data(version, template) do
+    case version.template_data do
+      data when is_map(data) and map_size(data) > 0 -> data
+      _ -> Template.default_data(template)
     end
   end
 
-  defp serialize_block(block) do
-    %{
-      id: block.id || Ash.UUID.generate(),
-      type: block.type,
-      data: block.data,
-      position: block.position
-    }
+  defp render_content_html(template, template_data) do
+    Renderer.render(template.slug, template_data)
   end
 
-  defp swap_blocks(blocks, i, j) do
-    a = Enum.at(blocks, i)
-    b = Enum.at(blocks, j)
+  defp coerce_value(nil, value), do: value
+  defp coerce_value(%{type: :number}, ""), do: nil
 
-    blocks
-    |> List.replace_at(i, b)
-    |> List.replace_at(j, a)
-  end
-
-  defp reindex_blocks(blocks) do
-    blocks
-    |> Enum.with_index()
-    |> Enum.map(fn {block, idx} -> %{block | position: idx} end)
-  end
-
-  defp block_value(block, key) do
-    case block.data do
-      %{value: value} when is_map(value) -> Map.get(value, key, "")
-      _ -> ""
+  defp coerce_value(%{type: :number}, value) when is_binary(value) do
+    case Float.parse(value) do
+      {num, ""} -> num
+      {num, _} -> num
+      :error -> nil
     end
   end
+
+  defp coerce_value(%{type: :toggle}, value) when is_binary(value), do: value == "true"
+  defp coerce_value(%{type: :toggle}, value) when is_boolean(value), do: value
+  defp coerce_value(_section, value), do: value
 
   @impl true
   def render(assigns) do
@@ -377,262 +451,204 @@ defmodule NexusWeb.PageLive.Edit do
       flash={@flash}
       project={@project}
       project_role={@project_role}
-      sidebar_directories={@sidebar_directories}
+      sidebar_folders={@sidebar_folders}
       sidebar_pages={@sidebar_pages}
+      creating_content_type={@creating_content_type}
       active_path={to_string(@page.full_path)}
-      breadcrumbs={[
-        {"Pages", ~p"/projects/#{@project.slug}/pages"},
-        {to_string(@page.slug), nil}
-      ]}
+      breadcrumbs={[{to_string(@page.slug), nil}]}
     >
       <div class="flex h-full">
         <%!-- Center: Editor --%>
         <div class="flex-1 overflow-y-auto">
           <div class="max-w-3xl mx-auto py-8 px-8">
             <%!-- Locale tabs --%>
-            <div class="flex items-center gap-2 mb-8">
-              <button
-                :for={pl <- @locales}
-                phx-click="switch_locale"
-                phx-value-locale={pl.locale}
-                class={[
-                  "px-3 py-1 text-sm rounded-full transition-colors",
-                  if(pl.locale == @current_locale,
-                    do: "bg-primary text-primary-content",
-                    else: "bg-base-200 text-base-content/60 hover:bg-base-300"
-                  )
-                ]}
-              >
-                {String.upcase(pl.locale)}
-                <span
-                  :if={pl.published_version_id}
-                  class="inline-block w-1.5 h-1.5 rounded-full bg-success ml-1"
-                >
-                </span>
-              </button>
-              <form id="add-locale-form" phx-submit="add_locale" class="flex items-center gap-1">
-                <input
-                  type="text"
-                  name="locale"
-                  placeholder="+ locale"
-                  class="input input-xs input-bordered w-20 text-xs"
-                />
-              </form>
+            <div class="flex items-center gap-1.5 mb-8 flex-wrap">
+              <.locale_button
+                :for={loc <- @project.available_locales}
+                locale={loc}
+                page_locale={@locale_map[loc]}
+                is_active={loc == @current_locale}
+              />
             </div>
 
             <%!-- Title --%>
-            <input
-              type="text"
-              value={@title}
-              phx-change="update_meta"
-              phx-debounce="300"
-              name="title"
-              class="w-full text-3xl font-bold bg-transparent border-none focus:outline-none focus:ring-0 placeholder:text-base-content/20 mb-2 p-0"
-              placeholder="Page title..."
-            />
-            <div class="text-sm text-base-content/40 font-mono mb-8">{@page.full_path}</div>
+            <form phx-change="update_meta" class="pb-4">
+              <input
+                type="text"
+                value={@title}
+                phx-debounce="300"
+                name="title"
+                class="w-full text-3xl font-bold bg-transparent border-none focus:outline-none focus:ring-0 placeholder:text-base-content/20 mb-2 p-0"
+                placeholder="Page title..."
+              />
+            </form>
 
-            <%!-- Blocks --%>
-            <div class="space-y-4">
-              <div
-                :for={{block, index} <- Enum.with_index(@blocks)}
-                class="group relative"
-              >
-                <%!-- Block controls (visible on hover) --%>
-                <div class="absolute -left-10 top-1 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col gap-0.5">
-                  <button
-                    phx-click="move_block_up"
-                    phx-value-index={index}
-                    class="btn btn-ghost btn-xs px-1"
-                    disabled={index == 0}
-                  >
-                    <.icon name="hero-chevron-up" class="size-3" />
-                  </button>
-                  <button
-                    phx-click="move_block_down"
-                    phx-value-index={index}
-                    class="btn btn-ghost btn-xs px-1"
-                    disabled={index == length(@blocks) - 1}
-                  >
-                    <.icon name="hero-chevron-down" class="size-3" />
-                  </button>
-                </div>
-                <div class="absolute -right-10 top-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <button
-                    phx-click="remove_block"
-                    phx-value-index={index}
-                    class="btn btn-ghost btn-xs px-1 text-error"
-                  >
-                    <.icon name="hero-trash" class="size-3" />
-                  </button>
-                </div>
-
-                <%!-- Block content --%>
-                <div class={[
-                  "rounded-box transition-colors",
-                  "border border-transparent group-hover:border-base-300"
-                ]}>
-                  <.block_editor block={block} index={index} />
-                </div>
-              </div>
-            </div>
-
-            <%!-- Empty state --%>
-            <div
-              :if={@blocks == []}
-              class="text-center py-16 text-base-content/30"
-            >
-              <.icon name="hero-document-text" class="size-12 mx-auto mb-3" />
-              <p>Add content blocks from the panel on the right</p>
-            </div>
+            <%!-- Template sections --%>
+            <form phx-change="update_template_field" class="space-y-6">
+              <.template_section
+                :for={section <- @template.sections}
+                section={section}
+                value={Map.get(@template_data, Atom.to_string(section.key))}
+              />
+            </form>
           </div>
         </div>
 
         <%!-- Right sidebar: Settings --%>
-        <aside class="w-80 border-l border-base-300 overflow-y-auto shrink-0 bg-base-100">
-          <div class="p-5 space-y-6">
-            <%!-- Publish section --%>
-            <div>
-              <h3 class="font-semibold text-sm mb-3 text-base-content/70 uppercase tracking-wide">
-                Publish
-              </h3>
-              <div class="space-y-3">
-                <div class="flex items-center justify-between">
-                  <span class="text-sm text-base-content/60">Status</span>
-                  <span class={[
-                    "badge badge-sm",
-                    @page.status == :published && "badge-success",
-                    @page.status == :draft && "badge-warning",
-                    @page.status == :archived && "badge-neutral"
-                  ]}>
-                    {@page.status}
+        <aside class="w-80 border-l border-base-200 overflow-y-auto shrink-0">
+          <%!-- Publish section --%>
+          <div class="p-5 border-b border-base-200">
+            <h3 class="font-semibold text-sm mb-3 text-base-content/70 uppercase tracking-wide">
+              Publish
+            </h3>
+            <div class="space-y-3">
+              <div class="flex items-center justify-between">
+                <span class="text-sm text-base-content/60">Status</span>
+                <span class={[
+                  "badge badge-sm",
+                  @page.status == :published && "badge-success",
+                  @page.status == :draft && "badge-warning",
+                  @page.status == :archived && "badge-neutral"
+                ]}>
+                  {@page.status}
+                </span>
+              </div>
+              <div :if={@version} class="flex items-center justify-between">
+                <span class="text-sm text-base-content/60">Version</span>
+                <span class="text-sm font-mono">v{@version.version_number}</span>
+              </div>
+              <%!-- Save status indicator --%>
+              <div class="flex items-center gap-1.5 text-sm">
+                <.save_status_indicator status={@save_status} />
+              </div>
+
+              <div class="flex gap-2">
+                <.button
+                  phx-click="save_version"
+                  class="btn btn-sm flex-1"
+                  phx-disable-with="Saving..."
+                >
+                  Save as Version
+                </.button>
+                <%= if @page.status == :published do %>
+                  <.button phx-click="unpublish" class="btn btn-warning btn-sm flex-1">
+                    Unpublish
+                  </.button>
+                <% else %>
+                  <.button phx-click="publish" class="btn btn-success btn-sm flex-1">
+                    Publish
+                  </.button>
+                <% end %>
+              </div>
+              <.button
+                :if={@version}
+                phx-click="publish_locale"
+                class="btn btn-ghost btn-sm w-full border border-base-content/20"
+              >
+                Publish Locale ({String.upcase(@current_locale)})
+              </.button>
+            </div>
+          </div>
+
+          <%!-- SEO section --%>
+          <div class="p-5 border-b border-base-200">
+            <h3 class="font-semibold text-sm mb-3 text-base-content/70 uppercase tracking-wide">
+              SEO Settings
+            </h3>
+            <.form for={%{}} phx-change="update_meta" class="space-y-3">
+              <div>
+                <div class="flex items-center justify-between mb-1">
+                  <span class="text-xs text-base-content/60">Meta Title</span>
+                  <span class="text-xs text-base-content/40">
+                    {String.length(@title)}/60
                   </span>
                 </div>
-                <div :if={@version} class="flex items-center justify-between">
-                  <span class="text-sm text-base-content/60">Version</span>
-                  <span class="text-sm font-mono">v{@version.version_number}</span>
+                <.input
+                  type="text"
+                  name="title"
+                  value={@title}
+                  phx-debounce="300"
+                  class="input input-sm w-full"
+                  placeholder="Page title for search engines"
+                />
+              </div>
+              <div>
+                <span class="text-xs text-base-content/60 mb-1 block">URL Slug</span>
+                <div class="input input-sm flex items-center w-full text-base-content/40 text-xs font-mono">
+                  /{@page.full_path}
                 </div>
-                <div class="flex gap-2">
-                  <button
-                    phx-click="save_version"
-                    class="btn btn-sm flex-1"
-                    phx-disable-with="Saving..."
+              </div>
+              <div>
+                <div class="flex items-center justify-between mb-1">
+                  <span class="text-xs text-base-content/60">Meta Description</span>
+                  <span class="text-xs text-base-content/40">
+                    {String.length(@meta_description)}/160
+                  </span>
+                </div>
+                <.input
+                  type="textarea"
+                  name="meta_description"
+                  value={@meta_description}
+                  phx-debounce="300"
+                  class="textarea textarea-sm w-full"
+                  rows="3"
+                  placeholder="Brief description for search results"
+                />
+              </div>
+              <div>
+                <span class="text-xs text-base-content/60 mb-1 block">Keywords</span>
+                <.input
+                  type="text"
+                  name="meta_keywords"
+                  value={@meta_keywords}
+                  phx-debounce="300"
+                  class="input input-sm w-full"
+                  placeholder="comma, separated, keywords"
+                />
+              </div>
+            </.form>
+          </div>
+
+          <%!-- Page Settings section --%>
+          <div class="p-5 border-b border-base-200">
+            <h3 class="font-semibold text-sm mb-3 text-base-content/70 uppercase tracking-wide">
+              Page Settings
+            </h3>
+            <div class="space-y-3">
+              <form phx-change="change_template">
+                <span class="text-xs text-base-content/60 mb-1 block">Template</span>
+                <select
+                  name="template_slug"
+                  class="select select-sm select-bordered w-full"
+                >
+                  <option
+                    :for={t <- @available_templates}
+                    value={t.slug}
+                    selected={t.slug == @template.slug}
                   >
-                    Save Draft
-                  </button>
-                  <%= if @page.status == :published do %>
-                    <button phx-click="unpublish" class="btn btn-warning btn-sm flex-1">
-                      Unpublish
-                    </button>
-                  <% else %>
-                    <button phx-click="publish" class="btn btn-success btn-sm flex-1">
-                      Publish
-                    </button>
-                  <% end %>
-                </div>
-                <button
-                  :if={@version}
-                  phx-click="publish_locale"
-                  class="btn btn-outline btn-sm w-full"
-                >
-                  Publish Locale ({String.upcase(@current_locale)})
-                </button>
+                    {t.label}
+                  </option>
+                </select>
+              </form>
+              <p :if={@template.description} class="text-xs text-base-content/40">
+                {@template.description}
+              </p>
+              <div class="text-xs text-base-content/40">
+                {length(@template.sections)} {if length(@template.sections) == 1,
+                  do: "section",
+                  else: "sections"}: {Enum.map_join(@template.sections, ", ", & &1.label)}
               </div>
             </div>
+          </div>
 
-            <div class="divider my-0"></div>
-
-            <%!-- SEO section --%>
-            <div>
-              <h3 class="font-semibold text-sm mb-3 text-base-content/70 uppercase tracking-wide">
-                SEO Settings
-              </h3>
-              <div class="space-y-3">
-                <div>
-                  <div class="flex items-center justify-between mb-1">
-                    <label class="text-xs text-base-content/60">Meta Title</label>
-                    <span class="text-xs text-base-content/40">
-                      {String.length(@title)}/60
-                    </span>
-                  </div>
-                  <input
-                    type="text"
-                    value={@title}
-                    phx-change="update_meta"
-                    phx-debounce="300"
-                    name="title"
-                    class="input input-sm input-bordered w-full"
-                    placeholder="Page title for search engines"
-                  />
-                </div>
-                <div>
-                  <label class="text-xs text-base-content/60 mb-1 block">URL Slug</label>
-                  <div class="input input-sm input-bordered flex items-center w-full text-base-content/40 text-xs font-mono">
-                    /{@page.full_path}
-                  </div>
-                </div>
-                <div>
-                  <div class="flex items-center justify-between mb-1">
-                    <label class="text-xs text-base-content/60">Meta Description</label>
-                    <span class="text-xs text-base-content/40">
-                      {String.length(@meta_description)}/160
-                    </span>
-                  </div>
-                  <textarea
-                    phx-change="update_meta"
-                    phx-debounce="300"
-                    name="meta_description"
-                    class="textarea textarea-bordered textarea-sm w-full"
-                    rows="3"
-                    placeholder="Brief description for search results"
-                  >{@meta_description}</textarea>
-                </div>
-                <div>
-                  <label class="text-xs text-base-content/60 mb-1 block">Keywords</label>
-                  <input
-                    type="text"
-                    value={@meta_keywords}
-                    phx-change="update_meta"
-                    phx-debounce="300"
-                    name="meta_keywords"
-                    class="input input-sm input-bordered w-full"
-                    placeholder="comma, separated, keywords"
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div class="divider my-0"></div>
-
-            <%!-- Block palette --%>
-            <div>
-              <h3 class="font-semibold text-sm mb-3 text-base-content/70 uppercase tracking-wide">
-                Content Blocks
-              </h3>
-              <div class="grid grid-cols-2 gap-2">
-                <button
-                  :for={{label, type, icon} <- @block_types}
-                  phx-click="add_block"
-                  phx-value-type={type}
-                  class="flex flex-col items-center gap-1 p-3 rounded-box border border-base-300 hover:bg-base-200 hover:border-primary/30 transition-colors text-base-content/60 hover:text-base-content"
-                >
-                  <.icon name={icon} class="size-5" />
-                  <span class="text-xs">{label}</span>
-                </button>
-              </div>
-            </div>
-
-            <div class="divider my-0"></div>
-
-            <%!-- Quick links --%>
-            <div>
-              <.link
-                navigate={~p"/projects/#{@project.slug}/pages/#{@page.id}/versions"}
-                class="flex items-center gap-2 text-sm text-base-content/60 hover:text-base-content"
-              >
-                <.icon name="hero-clock" class="size-4" /> Version History
-              </.link>
-            </div>
+          <%!-- Quick links --%>
+          <div class="p-5">
+            <.link
+              navigate={~p"/projects/#{@project.slug}/pages/#{@page.id}/versions"}
+              class="flex items-center gap-2 text-sm text-base-content/60 hover:text-base-content"
+            >
+              <.icon name="hero-clock" class="size-4" /> Version History
+            </.link>
           </div>
         </aside>
       </div>
@@ -640,197 +656,256 @@ defmodule NexusWeb.PageLive.Edit do
     """
   end
 
-  # ──────────────────────────────────────────────
-  # Block Editor Components
-  # ──────────────────────────────────────────────
+  # Section rendering components
 
-  attr :block, :map, required: true
-  attr :index, :integer, required: true
+  attr :section, :any, required: true
+  attr :value, :any, default: nil
 
-  defp block_editor(%{block: %{type: :text}} = assigns) do
+  defp template_section(%{section: %{type: :rich_text}} = assigns) do
+    key = Atom.to_string(assigns.section.key)
+    assigns = assign(assigns, :key, key)
+
     ~H"""
-    <textarea
-      phx-blur="update_block"
-      phx-value-index={@index}
-      name="content"
-      class="textarea w-full min-h-[80px] bg-transparent border-none focus:outline-none resize-y text-base leading-relaxed"
-      placeholder="Start writing..."
-    >{block_value(@block, :content)}</textarea>
-    """
-  end
-
-  defp block_editor(%{block: %{type: :heading}} = assigns) do
-    ~H"""
-    <div class="flex items-start gap-2 p-2">
-      <select
-        phx-change="update_block"
-        phx-value-index={@index}
-        name="level"
-        class="select select-ghost select-sm w-16 text-xs"
+    <div>
+      <label
+        :if={@section.label != "Body"}
+        class="text-xs font-medium text-base-content/60 mb-1 block"
       >
-        <option :for={l <- 1..6} value={l} selected={block_value(@block, :level) == l}>
-          H{l}
-        </option>
-      </select>
-      <input
-        type="text"
-        phx-blur="update_block"
-        phx-value-index={@index}
-        name="content"
-        value={block_value(@block, :content)}
-        class={[
-          "flex-1 bg-transparent border-none focus:outline-none focus:ring-0 font-bold",
-          heading_size(block_value(@block, :level))
-        ]}
-        placeholder="Heading..."
-      />
-    </div>
-    """
-  end
-
-  defp block_editor(%{block: %{type: :image}} = assigns) do
-    ~H"""
-    <div class="p-3 space-y-2">
-      <div class="flex items-center gap-2 text-xs text-base-content/40 mb-1">
-        <.icon name="hero-photo" class="size-3.5" /> Image
-      </div>
-      <input
-        type="text"
-        phx-blur="update_block"
-        phx-value-index={@index}
-        name="url"
-        value={block_value(@block, :url)}
-        class="input input-sm input-bordered w-full"
-        placeholder="Image URL..."
-      />
-      <div class="flex gap-2">
-        <input
-          type="text"
-          phx-blur="update_block"
-          phx-value-index={@index}
-          name="alt"
-          value={block_value(@block, :alt)}
-          class="input input-sm input-bordered flex-1"
-          placeholder="Alt text..."
-        />
-        <input
-          type="text"
-          phx-blur="update_block"
-          phx-value-index={@index}
-          name="caption"
-          value={block_value(@block, :caption)}
-          class="input input-sm input-bordered flex-1"
-          placeholder="Caption..."
-        />
-      </div>
+        {@section.label}
+        <span :if={@section.required} class="text-error">*</span>
+      </label>
       <div
-        :if={block_value(@block, :url) != ""}
-        class="rounded-box overflow-hidden bg-base-200 p-2"
+        id={"tiptap-editor-#{@key}"}
+        phx-hook="TiptapEditor"
+        phx-update="ignore"
+        data-content={
+          Jason.encode!(@value || %{"type" => "doc", "content" => [%{"type" => "paragraph"}]})
+        }
+        data-section-key={@key}
       >
-        <img
-          src={block_value(@block, :url)}
-          alt={block_value(@block, :alt)}
-          class="max-h-48 mx-auto rounded"
-        />
+        <div data-tiptap-editor></div>
       </div>
     </div>
     """
   end
 
-  defp block_editor(%{block: %{type: :code}} = assigns) do
-    ~H"""
-    <div class="rounded-box overflow-hidden">
-      <div class="flex items-center gap-2 px-3 py-1.5 bg-base-300/50">
-        <.icon name="hero-code-bracket" class="size-3.5 text-base-content/40" />
-        <input
-          type="text"
-          phx-blur="update_block"
-          phx-value-index={@index}
-          name="language"
-          value={block_value(@block, :language)}
-          class="input input-xs bg-transparent border-none w-24 text-xs text-base-content/60 p-0"
-          placeholder="language"
-        />
-      </div>
-      <textarea
-        phx-blur="update_block"
-        phx-value-index={@index}
-        name="content"
-        class="textarea w-full font-mono text-sm bg-base-300/30 border-none rounded-none min-h-[120px] resize-y"
-        placeholder="// code..."
-      >{block_value(@block, :content)}</textarea>
-    </div>
-    """
-  end
+  defp template_section(%{section: %{type: :text}} = assigns) do
+    key = Atom.to_string(assigns.section.key)
+    assigns = assign(assigns, :key, key)
 
-  defp block_editor(%{block: %{type: :quote}} = assigns) do
     ~H"""
-    <div class="border-l-4 border-primary/30 pl-4 py-2 space-y-2">
-      <textarea
-        phx-blur="update_block"
-        phx-value-index={@index}
-        name="content"
-        class="textarea w-full bg-transparent border-none italic text-lg leading-relaxed resize-y min-h-[60px]"
-        placeholder="Quote text..."
-      >{block_value(@block, :content)}</textarea>
+    <div>
+      <label class="text-xs font-medium text-base-content/60 mb-1 block">
+        {@section.label}
+        <span :if={@section.required} class="text-error">*</span>
+      </label>
       <input
         type="text"
-        phx-blur="update_block"
-        phx-value-index={@index}
-        name="attribution"
-        value={block_value(@block, :attribution)}
-        class="input input-sm bg-transparent border-none text-base-content/50 text-sm w-full"
-        placeholder="— Attribution"
+        value={@value || ""}
+        phx-debounce="300"
+        name={"section[#{@key}]"}
+        class="input input-bordered w-full"
+        placeholder={@section.label}
       />
     </div>
     """
   end
 
-  defp block_editor(%{block: %{type: :list}} = assigns) do
+  defp template_section(%{section: %{type: :textarea}} = assigns) do
+    key = Atom.to_string(assigns.section.key)
+    assigns = assign(assigns, :key, key)
+
     ~H"""
-    <div class="p-3 space-y-2">
-      <div class="flex items-center gap-2">
-        <select
-          phx-change="update_block"
-          phx-value-index={@index}
-          name="style"
-          class="select select-ghost select-xs"
-        >
-          <option value="unordered" selected={block_value(@block, :style) == :unordered}>
-            Bullet List
-          </option>
-          <option value="ordered" selected={block_value(@block, :style) == :ordered}>
-            Numbered List
-          </option>
-        </select>
-      </div>
+    <div>
+      <label class="text-xs font-medium text-base-content/60 mb-1 block">
+        {@section.label}
+        <span :if={@section.required} class="text-error">*</span>
+      </label>
       <textarea
-        phx-blur="update_block"
-        phx-value-index={@index}
-        name="items"
-        class="textarea w-full bg-transparent border-none resize-y min-h-[80px]"
-        placeholder="One item per line..."
-      >{Enum.join(block_value(@block, :items) || [], "\n")}</textarea>
+        phx-debounce="300"
+        name={"section[#{@key}]"}
+        class="textarea textarea-bordered w-full"
+        rows="4"
+        placeholder={@section.label}
+      >{@value || ""}</textarea>
     </div>
     """
   end
 
-  defp block_editor(%{block: %{type: :divider}} = assigns) do
+  defp template_section(%{section: %{type: :image}} = assigns) do
+    key = Atom.to_string(assigns.section.key)
+    assigns = assign(assigns, :key, key)
+
     ~H"""
-    <div class="py-4 px-2">
-      <hr class="border-base-300" />
+    <div>
+      <label class="text-xs font-medium text-base-content/60 mb-1 block">
+        {@section.label}
+        <span :if={@section.required} class="text-error">*</span>
+      </label>
+      <input
+        type="url"
+        value={@value || ""}
+        phx-debounce="300"
+        name={"section[#{@key}]"}
+        class="input input-bordered w-full"
+        placeholder="https://example.com/image.jpg"
+      />
+      <img
+        :if={@value && @value != ""}
+        src={@value}
+        class="mt-2 max-h-48 rounded-box object-cover"
+      />
     </div>
     """
   end
 
-  defp heading_size(level) when is_binary(level) do
-    heading_size(String.to_integer(level))
+  defp template_section(%{section: %{type: :url}} = assigns) do
+    key = Atom.to_string(assigns.section.key)
+    assigns = assign(assigns, :key, key)
+
+    ~H"""
+    <div>
+      <label class="text-xs font-medium text-base-content/60 mb-1 block">
+        {@section.label}
+        <span :if={@section.required} class="text-error">*</span>
+      </label>
+      <input
+        type="url"
+        value={@value || ""}
+        phx-debounce="300"
+        name={"section[#{@key}]"}
+        class="input input-bordered w-full"
+        placeholder="https://..."
+      />
+    </div>
+    """
   end
 
-  defp heading_size(1), do: "text-3xl"
-  defp heading_size(2), do: "text-2xl"
-  defp heading_size(3), do: "text-xl"
-  defp heading_size(4), do: "text-lg"
-  defp heading_size(5), do: "text-base"
-  defp heading_size(_), do: "text-sm"
+  defp template_section(%{section: %{type: :number}} = assigns) do
+    key = Atom.to_string(assigns.section.key)
+    assigns = assign(assigns, :key, key)
+
+    ~H"""
+    <div>
+      <label class="text-xs font-medium text-base-content/60 mb-1 block">
+        {@section.label}
+        <span :if={@section.required} class="text-error">*</span>
+      </label>
+      <input
+        type="number"
+        value={@value}
+        phx-debounce="300"
+        name={"section[#{@key}]"}
+        class="input input-bordered w-full"
+      />
+    </div>
+    """
+  end
+
+  defp template_section(%{section: %{type: :select}} = assigns) do
+    key = Atom.to_string(assigns.section.key)
+    options = Map.get(assigns.section.constraints, :options, [])
+    assigns = assign(assigns, key: key, options: options)
+
+    ~H"""
+    <div>
+      <label class="text-xs font-medium text-base-content/60 mb-1 block">
+        {@section.label}
+        <span :if={@section.required} class="text-error">*</span>
+      </label>
+      <select
+        name={"section[#{@key}]"}
+        class="select select-bordered w-full"
+      >
+        <option value="">Select...</option>
+        <option :for={opt <- @options} value={opt} selected={@value == opt}>{opt}</option>
+      </select>
+    </div>
+    """
+  end
+
+  defp template_section(%{section: %{type: :toggle}} = assigns) do
+    key = Atom.to_string(assigns.section.key)
+    assigns = assign(assigns, :key, key)
+
+    ~H"""
+    <div class="flex items-center gap-3">
+      <input type="hidden" name={"section[#{@key}]"} value="false" />
+      <input
+        type="checkbox"
+        name={"section[#{@key}]"}
+        value="true"
+        checked={@value == true}
+        class="toggle toggle-primary"
+      />
+      <label class="text-sm text-base-content/70">{@section.label}</label>
+    </div>
+    """
+  end
+
+  defp save_status_indicator(%{status: :saving} = assigns) do
+    ~H"""
+    <span class="loading loading-spinner loading-xs text-base-content/50"></span>
+    <span class="text-base-content/50">Saving...</span>
+    """
+  end
+
+  defp save_status_indicator(%{status: :saved} = assigns) do
+    ~H"""
+    <.icon name="hero-check-circle-mini" class="size-4 text-success" />
+    <span class="text-success">Saved</span>
+    """
+  end
+
+  defp save_status_indicator(%{status: :error} = assigns) do
+    ~H"""
+    <.icon name="hero-exclamation-circle-mini" class="size-4 text-error" />
+    <span class="text-error">Save failed</span>
+    """
+  end
+
+  defp save_status_indicator(%{status: :unsaved} = assigns) do
+    ~H"""
+    <.icon name="hero-pencil-mini" class="size-4 text-base-content/40" />
+    <span class="text-base-content/40">Unsaved changes</span>
+    """
+  end
+
+  attr :locale, :string, required: true
+  attr :page_locale, :any, default: nil
+  attr :is_active, :boolean, default: false
+
+  defp locale_button(assigns) do
+    has_content = assigns.page_locale != nil
+    is_published = has_content && assigns.page_locale.published_version_id != nil
+    assigns = assign(assigns, has_content: has_content, is_published: is_published)
+
+    ~H"""
+    <button
+      phx-click="switch_locale"
+      phx-value-locale={@locale}
+      class={[
+        "px-3 py-1 text-sm rounded-full transition-colors inline-flex items-center gap-1.5",
+        @is_active && "bg-primary text-primary-content",
+        !@is_active && @has_content && "bg-base-200 text-base-content/70 hover:bg-base-300",
+        !@is_active && !@has_content &&
+          "bg-transparent text-base-content/40 border border-dashed border-base-content/20 hover:border-base-content/40 hover:text-base-content/60"
+      ]}
+    >
+      {String.upcase(@locale)}
+      <span
+        :if={@is_published}
+        class="inline-block w-1.5 h-1.5 rounded-full bg-success"
+        title="Published"
+      >
+      </span>
+      <span
+        :if={!@has_content}
+        class="inline-block w-1.5 h-1.5 rounded-full bg-warning"
+        title="Missing content"
+      >
+      </span>
+    </button>
+    """
+  end
 end

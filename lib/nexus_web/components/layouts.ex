@@ -19,22 +19,24 @@ defmodule NexusWeb.Layouts do
 
   def app(assigns) do
     ~H"""
-    <header class="navbar px-4 sm:px-6 lg:px-8 border-b border-base-300">
-      <div class="flex-1">
-        <.link navigate={~p"/projects"} class="flex items-center gap-2 font-bold text-lg">
-          Nexus
-        </.link>
-      </div>
-      <div class="flex-none">
-        <.theme_toggle />
-      </div>
-    </header>
+    <div class="min-h-screen bg-base-300">
+      <header class="navbar px-4 sm:px-6 lg:px-8 border-b border-base-200">
+        <div class="flex-1">
+          <.link navigate={~p"/projects"} class="flex items-center gap-2 font-bold text-lg">
+            <span class="text-primary text-xl">⟐</span> Nexus
+          </.link>
+        </div>
+        <div class="flex-none">
+          <.theme_toggle />
+        </div>
+      </header>
 
-    <main class="px-4 py-12 sm:px-6 lg:px-8">
-      <div class="mx-auto max-w-5xl">
-        {render_slot(@inner_block)}
-      </div>
-    </main>
+      <main class="px-4 py-12 sm:px-6 lg:px-8">
+        <div class="mx-auto max-w-5xl">
+          {render_slot(@inner_block)}
+        </div>
+      </main>
+    </div>
 
     <.flash_group flash={@flash} />
     """
@@ -47,28 +49,29 @@ defmodule NexusWeb.Layouts do
   attr :flash, :map, required: true
   attr :project, :map, required: true
   attr :project_role, :atom, default: nil
-  attr :sidebar_directories, :list, default: []
+  attr :sidebar_folders, :list, default: []
   attr :sidebar_pages, :list, default: []
   attr :breadcrumbs, :list, default: []
   attr :active_path, :string, default: nil
+  attr :creating_content_type, :atom, default: nil
 
   slot :inner_block, required: true
 
   def project(assigns) do
-    tree_items = build_tree_items(assigns.sidebar_directories, assigns.sidebar_pages)
+    tree_items = build_tree_items(assigns.sidebar_folders, assigns.sidebar_pages)
     assigns = assign(assigns, :tree_items, tree_items)
 
     ~H"""
-    <div class="flex h-screen bg-base-100">
+    <div class="flex h-screen bg-base-300">
       <%!-- Sidebar --%>
-      <aside class="w-64 bg-base-200 flex flex-col shrink-0 border-r border-base-300">
+      <aside class="w-64 flex flex-col shrink-0 border-r border-base-200">
         <%!-- Project header --%>
         <div class="p-4 border-b border-base-300">
           <.link
             navigate={~p"/projects"}
             class="font-bold text-lg hover:text-primary transition-colors"
           >
-            Nexus
+            <span class="text-primary text-xl">⟐</span> Nexus
           </.link>
           <.link
             navigate={~p"/projects/#{@project.slug}"}
@@ -89,8 +92,12 @@ defmodule NexusWeb.Layouts do
             data-project-id={@project.id}
             class="mt-1"
           >
-            <ul class="menu menu-sm p-0 sortable-container" data-parent-type="root" data-parent-id="">
-              <%= if @tree_items == [] do %>
+            <ul
+              class="menu menu-sm p-0 sortable-container  w-full "
+              data-parent-type="root"
+              data-parent-id=""
+            >
+              <%= if @tree_items == [] && @creating_content_type == nil do %>
                 <li class="disabled">
                   <span class="text-xs text-base-content/30">No content yet</span>
                 </li>
@@ -102,23 +109,30 @@ defmodule NexusWeb.Layouts do
                   active_path={@active_path}
                 />
               <% end %>
+              <.inline_create_input
+                :if={@creating_content_type != nil}
+                type={@creating_content_type}
+              />
             </ul>
           </div>
-          <.link
-            navigate={~p"/projects/#{@project.slug}/pages/new"}
-            class="flex items-center gap-1.5 px-3 py-1.5 mt-2 text-xs text-base-content/40 hover:text-base-content hover:bg-base-300 rounded-box transition-colors"
+          <button
+            type="button"
+            phx-click="start_creating_page"
+            class="flex items-center gap-1.5 px-3 py-1.5 mt-2 text-xs text-base-content/40 hover:text-base-content hover:bg-base-300 rounded-box transition-colors w-full"
           >
             <.icon name="hero-plus" class="size-3" /> New page
-          </.link>
+          </button>
+          <button
+            type="button"
+            phx-click="start_creating_folder"
+            class="flex items-center gap-1.5 px-3 py-1.5 text-xs text-base-content/40 hover:text-base-content hover:bg-base-300 rounded-box transition-colors w-full"
+          >
+            <.icon name="hero-plus" class="size-3" /> New folder
+          </button>
         </div>
 
         <%!-- Bottom nav --%>
         <nav class="border-t border-base-300 p-2 space-y-px">
-          <.sidebar_nav_link
-            href={~p"/projects/#{@project.slug}/directories"}
-            icon="hero-folder-open"
-            label="Directories"
-          />
           <.sidebar_nav_link
             href={~p"/projects/#{@project.slug}/members"}
             icon="hero-users"
@@ -140,7 +154,7 @@ defmodule NexusWeb.Layouts do
       <%!-- Main area --%>
       <div class="flex-1 flex flex-col min-w-0">
         <%!-- Top bar with breadcrumbs --%>
-        <header class="h-14 border-b border-base-300 flex items-center px-6 shrink-0">
+        <header class="h-14 border-b border-base-200 flex items-center px-6 shrink-0">
           <nav class="flex items-center gap-1.5 text-sm min-w-0">
             <.link
               navigate={~p"/projects"}
@@ -204,30 +218,30 @@ defmodule NexusWeb.Layouts do
 
   defp tree_item(assigns) do
     ~H"""
-    <%= if @item.type == :directory do %>
+    <%= if @item.type == :folder do %>
       <li
-        id={"tree-item-directory-#{@item.data.id}"}
-        class="tree-item"
-        data-type="directory"
+        id={"tree-item-folder-#{@item.data.id}"}
+        class="tree-item w-full pb-1"
+        data-type="folder"
         data-id={@item.data.id}
         data-position={@item.data.position || 0}
         data-parent-id={@item.data.parent_id || ""}
       >
         <details open>
-          <summary class="group directory-summary">
-            <.icon
-              name="hero-bars-2"
-              class="size-3 text-base-content/20 shrink-0 cursor-grab drag-handle opacity-0 group-hover:opacity-100 transition-opacity"
-            />
+          <summary class="group folder-summary ">
             <.icon name="hero-folder" class="size-4 shrink-0 folder-closed" />
             <.icon name="hero-folder-open" class="size-4 shrink-0 folder-open" />
             <span class="truncate font-medium text-sm text-base-content/60">
               {@item.data.name}
             </span>
+            <.icon
+              name="hero-bars-2"
+              class="size-3 text-base-content/30 shrink-0 cursor-grab tree-drag-handle ml-auto"
+            />
           </summary>
           <ul
-            class="sortable-container menu-dropdown menu-dropdown-show"
-            data-parent-type="directory"
+            class="sortable-container menu-dropdown menu-dropdown-show pt-1"
+            data-parent-type="folder"
             data-parent-id={@item.data.id}
           >
             <.tree_item
@@ -242,45 +256,46 @@ defmodule NexusWeb.Layouts do
     <% else %>
       <li
         id={"tree-item-page-#{@item.data.id}"}
-        class="tree-item"
+        class="tree-item w-full pb-1"
         data-type="page"
         data-id={@item.data.id}
         data-position={@item.data.position || 0}
-        data-directory-id={@item.data.directory_id || ""}
+        data-folder-id={@item.data.folder_id || ""}
         data-parent-page-id={@item.data.parent_page_id || ""}
       >
         <%= if @item.children != [] do %>
-          <details open>
-            <summary class={[
+          <.link
+            navigate={~p"/projects/#{@project_slug}/pages/#{@item.data.id}/edit"}
+            class={[
               "group",
               if(@active_path == to_string(@item.data.full_path),
                 do: "bg-primary/10 text-primary font-medium",
                 else: "text-base-content/60"
               )
-            ]}>
-              <.icon
-                name="hero-bars-2"
-                class="size-3 text-base-content/20 shrink-0 cursor-grab drag-handle opacity-0 group-hover:opacity-100 transition-opacity"
-              />
-              <.icon name="hero-document-text" class="size-4 shrink-0" />
-              <span class="truncate text-sm">{@item.data.slug}</span>
-              <span :if={@item.data.status == :published} class="ml-auto shrink-0">
-                <span class="w-1.5 h-1.5 rounded-full bg-success inline-block"></span>
-              </span>
-            </summary>
-            <ul
-              class="sortable-container menu-dropdown menu-dropdown-show"
-              data-parent-type="page"
-              data-parent-id={@item.data.id}
-            >
-              <.tree_item
-                :for={child <- @item.children}
-                item={child}
-                project_slug={@project_slug}
-                active_path={@active_path}
-              />
-            </ul>
-          </details>
+            ]}
+          >
+            <.icon name="hero-document-text" class="size-4 shrink-0" />
+            <span class="truncate text-sm">{@item.data.slug}</span>
+            <span :if={@item.data.status == :published} class="shrink-0">
+              <span class="w-1.5 h-1.5 rounded-full bg-success inline-block"></span>
+            </span>
+            <.icon
+              name="hero-bars-2"
+              class="size-3 text-base-content/30 shrink-0 cursor-grab tree-drag-handle ml-auto"
+            />
+          </.link>
+          <ul
+            class="sortable-container menu-dropdown menu-dropdown-show"
+            data-parent-type="page"
+            data-parent-id={@item.data.id}
+          >
+            <.tree_item
+              :for={child <- @item.children}
+              item={child}
+              project_slug={@project_slug}
+              active_path={@active_path}
+            />
+          </ul>
         <% else %>
           <.link
             navigate={~p"/projects/#{@project_slug}/pages/#{@item.data.id}/edit"}
@@ -292,15 +307,15 @@ defmodule NexusWeb.Layouts do
               )
             ]}
           >
-            <.icon
-              name="hero-bars-2"
-              class="size-3 text-base-content/20 shrink-0 cursor-grab drag-handle opacity-0 group-hover:opacity-100 transition-opacity"
-            />
             <.icon name="hero-document-text" class="size-4 shrink-0" />
             <span class="truncate text-sm">{@item.data.slug}</span>
-            <span :if={@item.data.status == :published} class="ml-auto shrink-0">
+            <span :if={@item.data.status == :published} class="shrink-0">
               <span class="w-1.5 h-1.5 rounded-full bg-success inline-block"></span>
             </span>
+            <.icon
+              name="hero-bars-2"
+              class="size-3 text-base-content/30 shrink-0 cursor-grab tree-drag-handle ml-auto"
+            />
           </.link>
           <ul
             class="sortable-container menu-dropdown menu-dropdown-show"
@@ -330,57 +345,84 @@ defmodule NexusWeb.Layouts do
     """
   end
 
+  attr :type, :atom, required: true
+
+  defp inline_create_input(assigns) do
+    icon = if assigns.type == :folder, do: "hero-folder", else: "hero-document-text"
+    assigns = assign(assigns, :icon, icon)
+
+    ~H"""
+    <li class="tree-item w-full pb-1" id="inline-create-item">
+      <form
+        phx-submit="save_inline_content"
+        phx-click-away="cancel_inline_create"
+        class="flex items-center gap-2 px-2 py-1"
+      >
+        <input type="hidden" name="type" value={@type} />
+        <.icon name={@icon} class="size-4 shrink-0 text-base-content/60" />
+        <input
+          type="text"
+          name="name"
+          placeholder={if @type == :folder, do: "Folder name", else: "Page slug"}
+          autofocus
+          phx-mounted={JS.focus()}
+          phx-keydown="cancel_inline_create"
+          phx-key="Escape"
+          class="input input-xs input-bordered flex-1 bg-base-100"
+        />
+      </form>
+    </li>
+    """
+  end
+
   # ──────────────────────────────────────────────
   # Tree Data Builder
   # ──────────────────────────────────────────────
 
-  defp build_tree_items(directories, pages) do
-    dir_by_parent = Enum.group_by(directories, & &1.parent_id)
-    pages_by_dir = Enum.group_by(pages, & &1.directory_id)
+  defp build_tree_items(folders, pages) do
+    folder_by_parent = Enum.group_by(folders, & &1.parent_id)
+    pages_by_folder = Enum.group_by(pages, & &1.folder_id)
     pages_by_parent = Enum.group_by(pages, & &1.parent_page_id)
 
-    # Build directory tree (includes pages inside directories)
-    dir_tree = build_directory_tree(nil, dir_by_parent, pages_by_dir, pages_by_parent)
-
-    # Build root-level pages (no directory, no parent page)
-    root_pages = build_page_tree(nil, nil, pages_by_dir, pages_by_parent)
-
-    dir_tree ++ root_pages
+    # Build root-level items (folders and pages without parent), sorted by position
+    build_children_at_level(nil, folder_by_parent, pages_by_folder, pages_by_parent)
   end
 
-  defp build_directory_tree(parent_id, dir_by_parent, pages_by_dir, pages_by_parent) do
-    dirs =
-      Map.get(dir_by_parent, parent_id, [])
-      |> Enum.sort_by(&(&1.position || 0))
+  defp build_children_at_level(parent_id, folder_by_parent, pages_by_folder, pages_by_parent) do
+    # Get folders at this level
+    folder_items =
+      Map.get(folder_by_parent, parent_id, [])
+      |> Enum.map(fn folder ->
+        children =
+          build_children_at_level(folder.id, folder_by_parent, pages_by_folder, pages_by_parent)
 
-    Enum.map(dirs, fn dir ->
-      child_dirs = build_directory_tree(dir.id, dir_by_parent, pages_by_dir, pages_by_parent)
-      child_pages = build_page_tree(dir.id, nil, pages_by_dir, pages_by_parent)
+        %{type: :folder, data: folder, children: children}
+      end)
 
-      %{
-        type: :directory,
-        data: dir,
-        children: child_dirs ++ child_pages
-      }
-    end)
+    # Get pages at this level (no parent page)
+    page_items = build_page_tree(parent_id, nil, pages_by_folder, pages_by_parent)
+
+    # Combine and sort by position
+    (folder_items ++ page_items)
+    |> Enum.sort_by(fn item -> item.data.position || 0 end)
   end
 
-  defp build_page_tree(directory_id, parent_page_id, pages_by_dir, pages_by_parent) do
-    # Get pages that match the directory and parent_page criteria
+  defp build_page_tree(folder_id, parent_page_id, pages_by_folder, pages_by_parent) do
+    # Get pages that match the folder and parent_page criteria
     pages =
       if parent_page_id do
         # Getting sub-pages (pages with this parent_page_id)
         Map.get(pages_by_parent, parent_page_id, [])
       else
-        # Getting pages in a directory (or root) without a parent page
-        Map.get(pages_by_dir, directory_id, [])
+        # Getting pages in a folder (or root) without a parent page
+        Map.get(pages_by_folder, folder_id, [])
         |> Enum.filter(&is_nil(&1.parent_page_id))
       end
 
     pages
     |> Enum.sort_by(&(&1.position || 0))
     |> Enum.map(fn page ->
-      sub_pages = build_page_tree(directory_id, page.id, pages_by_dir, pages_by_parent)
+      sub_pages = build_page_tree(folder_id, page.id, pages_by_folder, pages_by_parent)
 
       %{
         type: :page,

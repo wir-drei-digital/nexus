@@ -103,7 +103,18 @@
 /* Make LiveView wrapper divs transparent for layout */
 [data-phx-session], [data-phx-teleported-src] { display: contents }
 
+@import "./tiptap.css";
+
 /* This file is for your main application CSS */
+
+/* Light mode: use darker borders for better visibility */
+[data-theme=light] .border-base-200 {
+  border-color: oklch(85% 0.004 286.32);
+}
+
+[data-theme=light] .border-base-300 {
+  border-color: oklch(88% 0.004 286.32);
+}
 
 /* Content tree drag-and-drop styles */
 .sortable-ghost {
@@ -123,13 +134,23 @@
   grid-template-columns: unset !important;
 }
 
+#content-tree summary {
+  list-style: none;
+}
+
 #content-tree summary::marker,
 #content-tree summary::-webkit-details-marker {
   display: none;
 }
 
+#content-tree .folder-summary::before,
+#content-tree .folder-summary::after {
+  display: none !important;
+  content: none !important;
+}
+
 /* Arrow indicator for page summaries only */
-#content-tree details > summary:not(.directory-summary)::before {
+#content-tree details > summary:not(.folder-summary)::before {
   content: "";
   width: 0;
   height: 0;
@@ -141,24 +162,24 @@
   flex-shrink: 0;
 }
 
-#content-tree details[open] > summary:not(.directory-summary)::before {
+#content-tree details[open] > summary:not(.folder-summary)::before {
   transform: rotate(90deg);
 }
 
 /* Directory folder icon toggle */
-#content-tree .directory-summary .folder-open {
+#content-tree .folder-summary .folder-open {
   display: none;
 }
 
-#content-tree .directory-summary .folder-closed {
+#content-tree .folder-summary .folder-closed {
   display: block;
 }
 
-#content-tree details[open] > .directory-summary .folder-open {
+#content-tree details[open] > .folder-summary .folder-open {
   display: block;
 }
 
-#content-tree details[open] > .directory-summary .folder-closed {
+#content-tree details[open] > .folder-summary .folder-closed {
   display: none;
 }
 

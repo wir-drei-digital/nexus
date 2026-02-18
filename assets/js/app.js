@@ -25,12 +25,13 @@ import {LiveSocket} from "phoenix_live_view"
 import {hooks as colocatedHooks} from "phoenix-colocated/nexus"
 import topbar from "../vendor/topbar"
 import ContentTreeSort from "./hooks/content_tree_sort"
+import TiptapEditor from "./hooks/tiptap_editor"
 
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 const liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 2500,
   params: {_csrf_token: csrfToken},
-  hooks: {...colocatedHooks, ContentTreeSort},
+  hooks: {...colocatedHooks, ContentTreeSort, TiptapEditor},
 })
 
 // Show progress bar on live navigation and form submits

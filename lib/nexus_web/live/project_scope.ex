@@ -1,7 +1,7 @@
 defmodule NexusWeb.ProjectScope do
   @moduledoc """
   On_mount hook that loads a project from the URL slug and assigns it.
-  Also loads sidebar tree data (directories + pages) for the project layout.
+  Also loads sidebar tree data (folders + pages) for the project layout.
   """
   import Phoenix.Component
   import Phoenix.LiveView
@@ -12,15 +12,16 @@ defmodule NexusWeb.ProjectScope do
     case Nexus.Projects.Project.get_by_slug(slug, actor: user) do
       {:ok, project} ->
         membership = get_membership(project.id, user.id)
-        {sidebar_directories, sidebar_pages} = load_sidebar_data(project.id, user)
+        {sidebar_folders, sidebar_pages} = load_sidebar_data(project.id, user)
 
         {:cont,
          socket
          |> assign(:project, project)
          |> assign(:membership, membership)
          |> assign(:project_role, membership && membership.role)
-         |> assign(:sidebar_directories, sidebar_directories)
-         |> assign(:sidebar_pages, sidebar_pages)}
+         |> assign(:sidebar_folders, sidebar_folders)
+         |> assign(:sidebar_pages, sidebar_pages)
+         |> assign(:creating_content_type, nil)}
 
       {:error, _} ->
         {:halt, redirect(socket, to: "/projects")}
@@ -45,9 +46,9 @@ defmodule NexusWeb.ProjectScope do
   end
 
   defp load_sidebar_data(project_id, user) do
-    directories =
-      case Nexus.Content.Directory.for_project(project_id, actor: user) do
-        {:ok, dirs} -> dirs
+    folders =
+      case Nexus.Content.Folder.for_project(project_id, actor: user) do
+        {:ok, folders} -> folders
         _ -> []
       end
 
@@ -57,6 +58,6 @@ defmodule NexusWeb.ProjectScope do
         _ -> []
       end
 
-    {directories, pages}
+    {folders, pages}
   end
 end

@@ -39,7 +39,7 @@ const ContentTreeSort = {
         animation: 150,
         fallbackOnBody: true,
         swapThreshold: 0.65,
-        handle: ".drag-handle",
+        handle: ".tree-drag-handle",
         draggable: ".tree-item",
         ghostClass: "sortable-ghost",
 
@@ -59,8 +59,8 @@ const ContentTreeSort = {
         },
 
         onMove: (evt) => {
-          // Prevent directories from being nested inside pages
-          if (evt.dragged.dataset.type === "directory" && evt.to.dataset.parentType === "page") {
+          // Prevent folders from being nested inside pages
+          if (evt.dragged.dataset.type === "folder" && evt.to.dataset.parentType === "page") {
             return false
           }
           return true

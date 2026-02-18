@@ -43,8 +43,6 @@ defmodule NexusWeb.Router do
       live "/projects/:slug/settings", ProjectLive.Settings, :edit
       live "/projects/:slug/members", MembershipLive.Index, :index
       live "/projects/:slug/api-keys", ProjectApiKeyLive.Index, :index
-      live "/projects/:slug/directories", DirectoryLive.Index, :index
-      live "/projects/:slug/pages", PageLive.Index, :index
       live "/projects/:slug/pages/new", PageLive.New, :new
       live "/projects/:slug/pages/:id/edit", PageLive.Edit, :edit
       live "/projects/:slug/pages/:id/versions", PageLive.Versions, :index
@@ -100,8 +98,10 @@ defmodule NexusWeb.Router do
   scope "/api/v1", NexusWeb.Api do
     pipe_through :public_api
 
-    get "/projects/:slug/tree", PageRenderController, :tree
-    get "/projects/:slug/render/*path", PageRenderController, :render_page
+    get "/projects/:slug", ProjectController, :show
+    get "/projects/:slug/folders", FolderController, :index
+    get "/projects/:slug/pages", PageController, :index
+    get "/projects/:slug/pages/*path", PageController, :show
   end
 
   # Enable LiveDashboard and Swoosh mailbox preview in development

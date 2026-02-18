@@ -1,0 +1,18 @@
+{
+  "name": "nexus-assets",
+  "private": true,
+  "dependencies": {
+    "@tiptap/core": "^2.11.0",
+    "@tiptap/pm": "^2.11.0",
+    "@tiptap/starter-kit": "^2.11.0",
+    "@tiptap/extension-placeholder": "^2.11.0",
+    "@tiptap/extension-image": "^2.11.0",
+    "@tiptap/extension-link": "^2.11.0",
+    "@tiptap/extension-underline": "^2.11.0",
+    "@tiptap/extension-code-block-lowlight": "^2.11.0",
+    "@tiptap/extension-typography": "^2.11.0",
+    "@tiptap/suggestion": "^2.11.0",
+    "lowlight": "^3.2.0",
+    "tippy.js": "^6.3.7"
+  }
+}
