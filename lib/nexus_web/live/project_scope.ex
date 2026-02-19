@@ -24,7 +24,7 @@ defmodule NexusWeb.ProjectScope do
          |> assign(:creating_content_type, nil)}
 
       {:error, _} ->
-        {:halt, redirect(socket, to: "/projects")}
+        {:halt, redirect(socket, to: "/admin")}
     end
   end
 

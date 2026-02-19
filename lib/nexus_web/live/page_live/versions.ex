@@ -25,7 +25,7 @@ defmodule NexusWeb.PageLive.Versions do
         {:ok,
          socket
          |> put_flash(:error, "Page not found")
-         |> push_navigate(to: ~p"/projects/#{project.slug}")}
+         |> push_navigate(to: ~p"/admin/#{project.slug}")}
     end
   end
 
@@ -82,7 +82,7 @@ defmodule NexusWeb.PageLive.Versions do
       creating_content_type={@creating_content_type}
       active_path={to_string(@page.full_path)}
       breadcrumbs={[
-        {to_string(@page.slug), ~p"/projects/#{@project.slug}/pages/#{@page.id}/edit"},
+        {to_string(@page.slug), ~p"/admin/#{@project.slug}/pages/#{@page.id}/edit"},
         {"Versions", nil}
       ]}
     >
@@ -97,7 +97,7 @@ defmodule NexusWeb.PageLive.Versions do
             </p>
           </div>
           <.link
-            navigate={~p"/projects/#{@project.slug}/pages/#{@page.id}/edit"}
+            navigate={~p"/admin/#{@project.slug}/pages/#{@page.id}/edit"}
             class="btn btn-ghost btn-sm"
           >
             <.icon name="hero-pencil" class="size-4" /> Back to Editor

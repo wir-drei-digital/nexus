@@ -33,7 +33,7 @@ defmodule NexusWeb.ProjectLive.Index do
         {:noreply,
          socket
          |> put_flash(:info, "Project created successfully")
-         |> push_navigate(to: ~p"/projects/#{project.slug}")}
+         |> push_navigate(to: ~p"/admin/#{project.slug}")}
 
       {:error, changeset} ->
         {:noreply, assign(socket, :form, to_form(changeset))}
@@ -56,7 +56,7 @@ defmodule NexusWeb.ProjectLive.Index do
     <Layouts.app flash={@flash}>
       <div class="flex items-center justify-between mb-8">
         <h1 class="text-2xl font-bold">Projects</h1>
-        <.link patch={~p"/projects/new"} class="btn btn-primary btn-sm">
+        <.link patch={~p"/admin/new"} class="btn btn-primary btn-sm">
           <.icon name="hero-plus" class="size-4" /> New Project
         </.link>
       </div>
@@ -68,7 +68,7 @@ defmodule NexusWeb.ProjectLive.Index do
         <.link
           :for={{id, project} <- @streams.projects}
           id={id}
-          navigate={~p"/projects/#{project.slug}"}
+          navigate={~p"/admin/#{project.slug}"}
           class="card bg-gradient-to-br from-primary/10 to-primary/5 hover:from-primary/20 hover:to-primary/10 transition-all cursor-pointer"
         >
           <div class="card-body">
@@ -91,7 +91,7 @@ defmodule NexusWeb.ProjectLive.Index do
       >
         <div
           class="card bg-base-100 w-full max-w-md shadow-xl"
-          phx-click-away={JS.patch(~p"/projects")}
+          phx-click-away={JS.patch(~p"/admin")}
         >
           <div class="card-body">
             <h2 class="card-title mb-4">New Project</h2>
@@ -102,7 +102,7 @@ defmodule NexusWeb.ProjectLive.Index do
               <.input field={@form[:default_locale]} label="Default Locale" value="en" />
               <.input field={@form[:is_public]} label="Public" type="checkbox" />
               <div class="flex justify-end gap-2 mt-6">
-                <.link patch={~p"/projects"} class="btn btn-ghost">Cancel</.link>
+                <.link patch={~p"/admin"} class="btn btn-ghost">Cancel</.link>
                 <.button type="submit" class="btn btn-primary">Create Project</.button>
               </div>
             </.form>

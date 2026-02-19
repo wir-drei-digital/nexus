@@ -6,7 +6,7 @@ defmodule Nexus.Content.Templates.Renderer do
   import Phoenix.HTML, only: [html_escape: 1, safe_to_string: 1]
 
   alias Nexus.Content.Templates.{Registry, Section}
-  alias Nexus.Content.TiptapRenderer
+  alias TiptapPhoenix.Renderer, as: TiptapRenderer
 
   @allowed_image_schemes ~w(http https)
   @allowed_link_schemes ~w(http https)

@@ -35,7 +35,7 @@ defmodule NexusWeb.ContentTreeHandlers do
          |> assign(:creating_content_type, nil)
          |> assign(:sidebar_folders, folders)
          |> assign(:sidebar_pages, pages)
-         |> push_navigate(to: "/projects/#{socket.assigns.project.slug}/pages/#{page.id}/edit")}
+         |> push_navigate(to: "/admin/#{socket.assigns.project.slug}/pages/#{page.id}/edit")}
 
       {:error, _} ->
         {:noreply,

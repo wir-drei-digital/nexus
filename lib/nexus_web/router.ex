@@ -37,26 +37,23 @@ defmodule NexusWeb.Router do
     pipe_through :browser
 
     ash_authentication_live_session :authenticated_routes do
-      live "/projects", ProjectLive.Index, :index
-      live "/projects/new", ProjectLive.Index, :new
-      live "/projects/:slug", ProjectLive.Show, :show
-      live "/projects/:slug/settings", ProjectLive.Settings, :edit
-      live "/projects/:slug/members", MembershipLive.Index, :index
-      live "/projects/:slug/api-keys", ProjectApiKeyLive.Index, :index
-      live "/projects/:slug/pages/new", PageLive.New, :new
-      live "/projects/:slug/pages/:id/edit", PageLive.Edit, :edit
-      live "/projects/:slug/pages/:id/versions", PageLive.Versions, :index
+      live "/admin", ProjectLive.Index, :index
+      live "/admin/new", ProjectLive.Index, :new
+      live "/admin/:slug", ProjectLive.Show, :show
+      live "/admin/:slug/settings", ProjectLive.Settings, :edit
+      live "/admin/:slug/members", MembershipLive.Index, :index
+      live "/admin/:slug/api-keys", ProjectApiKeyLive.Index, :index
+      live "/admin/:slug/pages/new", PageLive.New, :new
+      live "/admin/:slug/pages/:id/edit", PageLive.Edit, :edit
+      live "/admin/:slug/pages/:id/versions", PageLive.Versions, :index
     end
   end
 
-  scope "/api/json" do
-    pipe_through [:api]
+  scope "/api/docs", NexusWeb do
+    pipe_through :browser
 
-    forward "/swaggerui", OpenApiSpex.Plug.SwaggerUI,
-      path: "/api/json/open_api",
-      default_model_expand_depth: 4
-
-    forward "/", NexusWeb.AshJsonApiRouter
+    get "/", Api.SwaggerController, :index
+    get "/spec", Api.SpecController, :index
   end
 
   scope "/", NexusWeb do

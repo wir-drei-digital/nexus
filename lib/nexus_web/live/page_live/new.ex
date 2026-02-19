@@ -41,7 +41,7 @@ defmodule NexusWeb.PageLive.New do
         {:noreply,
          socket
          |> put_flash(:info, "Page created")
-         |> push_navigate(to: ~p"/projects/#{socket.assigns.project.slug}/pages/#{page.id}/edit")}
+         |> push_navigate(to: ~p"/admin/#{socket.assigns.project.slug}/pages/#{page.id}/edit")}
 
       {:error, _} ->
         {:noreply, put_flash(socket, :error, "Failed to create page")}
@@ -105,7 +105,7 @@ defmodule NexusWeb.PageLive.New do
             value="default"
           />
           <div class="flex justify-end gap-2 mt-6">
-            <.link navigate={~p"/projects/#{@project.slug}"} class="btn btn-ghost">
+            <.link navigate={~p"/admin/#{@project.slug}"} class="btn btn-ghost">
               Cancel
             </.link>
             <.button type="submit" class="btn btn-primary">Create Page</.button>

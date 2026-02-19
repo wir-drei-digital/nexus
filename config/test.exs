@@ -20,7 +20,7 @@ config :nexus, Nexus.Repo,
 # We don't run a server during test. If one is required,
 # you can enable the server option below.
 config :nexus, NexusWeb.Endpoint,
-  http: [ip: {127, 0, 0, 1}, port: 4002],
+  http: [ip: {127, 0, 0, 1}, port: 4012],
   secret_key_base: "7xR3YvK4ivQERLs3KBlGCbl6hu9hujQ5pnFyswGqYBI6x6Szvu8GfupKDhgdMq6D",
   server: false
 

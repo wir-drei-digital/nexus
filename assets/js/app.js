@@ -25,7 +25,9 @@ import {LiveSocket} from "phoenix_live_view"
 import {hooks as colocatedHooks} from "phoenix-colocated/nexus"
 import topbar from "../vendor/topbar"
 import ContentTreeSort from "./hooks/content_tree_sort"
-import TiptapEditor from "./hooks/tiptap_editor"
+import { createTiptapHook } from "tiptap-phoenix"
+
+const TiptapEditor = createTiptapHook()
 
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 const liveSocket = new LiveSocket("/live", Socket, {

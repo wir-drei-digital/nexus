@@ -1,7 +1,7 @@
-defmodule Nexus.Content.TiptapRendererTest do
+defmodule TiptapPhoenix.RendererIntegrationTest do
   use ExUnit.Case, async: true
 
-  alias Nexus.Content.TiptapRenderer
+  alias TiptapPhoenix.Renderer, as: TiptapRenderer
 
   describe "render/1" do
     test "renders a paragraph" do

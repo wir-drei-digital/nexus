@@ -22,8 +22,9 @@ defmodule NexusWeb.Layouts do
     <div class="min-h-screen bg-base-300">
       <header class="navbar px-4 sm:px-6 lg:px-8 border-b border-base-200">
         <div class="flex-1">
-          <.link navigate={~p"/projects"} class="flex items-center gap-2 font-bold text-lg">
-            <span class="text-primary text-xl">⟐</span> Nexus
+          <.link navigate={~p"/admin"} class="flex items-center gap-2 text-lg">
+            <span class="text-primary text-xl">⟐</span>
+            <span class="font-medium" style="font-family: 'Space Grotesk', sans-serif;">NEXUS</span>
           </.link>
         </div>
         <div class="flex-none">
@@ -68,13 +69,14 @@ defmodule NexusWeb.Layouts do
         <%!-- Project header --%>
         <div class="p-4 border-b border-base-300">
           <.link
-            navigate={~p"/projects"}
-            class="font-bold text-lg hover:text-primary transition-colors"
+            navigate={~p"/admin"}
+            class="text-lg hover:text-primary transition-colors"
           >
-            <span class="text-primary text-xl">⟐</span> Nexus
+            <span class="text-primary text-xl">⟐</span>
+            <span class="font-medium" style="font-family: 'Space Grotesk', sans-serif;">NEXUS</span>
           </.link>
           <.link
-            navigate={~p"/projects/#{@project.slug}"}
+            navigate={~p"/admin/#{@project.slug}"}
             class="block text-sm text-base-content/60 hover:text-base-content transition-colors mt-0.5 truncate"
           >
             {@project.name}
@@ -134,17 +136,17 @@ defmodule NexusWeb.Layouts do
         <%!-- Bottom nav --%>
         <nav class="border-t border-base-300 p-2 space-y-px">
           <.sidebar_nav_link
-            href={~p"/projects/#{@project.slug}/members"}
+            href={~p"/admin/#{@project.slug}/members"}
             icon="hero-users"
             label="Members"
           />
           <.sidebar_nav_link
-            href={~p"/projects/#{@project.slug}/api-keys"}
+            href={~p"/admin/#{@project.slug}/api-keys"}
             icon="hero-key"
             label="API Keys"
           />
           <.sidebar_nav_link
-            href={~p"/projects/#{@project.slug}/settings"}
+            href={~p"/admin/#{@project.slug}/settings"}
             icon="hero-cog-6-tooth"
             label="Settings"
           />
@@ -157,14 +159,14 @@ defmodule NexusWeb.Layouts do
         <header class="h-14 border-b border-base-200 flex items-center px-6 shrink-0">
           <nav class="flex items-center gap-1.5 text-sm min-w-0">
             <.link
-              navigate={~p"/projects"}
+              navigate={~p"/admin"}
               class="text-base-content/40 hover:text-base-content shrink-0"
             >
               Projects
             </.link>
             <.icon name="hero-chevron-right-mini" class="size-4 text-base-content/25 shrink-0" />
             <.link
-              navigate={~p"/projects/#{@project.slug}"}
+              navigate={~p"/admin/#{@project.slug}"}
               class={[
                 "hover:text-base-content truncate",
                 if(@breadcrumbs == [],
@@ -265,7 +267,7 @@ defmodule NexusWeb.Layouts do
       >
         <%= if @item.children != [] do %>
           <.link
-            navigate={~p"/projects/#{@project_slug}/pages/#{@item.data.id}/edit"}
+            navigate={~p"/admin/#{@project_slug}/pages/#{@item.data.id}/edit"}
             class={[
               "group",
               if(@active_path == to_string(@item.data.full_path),
@@ -298,7 +300,7 @@ defmodule NexusWeb.Layouts do
           </ul>
         <% else %>
           <.link
-            navigate={~p"/projects/#{@project_slug}/pages/#{@item.data.id}/edit"}
+            navigate={~p"/admin/#{@project_slug}/pages/#{@item.data.id}/edit"}
             class={[
               "group",
               if(@active_path == to_string(@item.data.full_path),

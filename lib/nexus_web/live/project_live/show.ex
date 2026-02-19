@@ -67,7 +67,7 @@ defmodule NexusWeb.ProjectLive.Show do
 
         <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <.link
-            navigate={~p"/projects/#{@project.slug}/members"}
+            navigate={~p"/admin/#{@project.slug}/members"}
             class="card bg-base-200 hover:bg-base-300 transition-colors"
           >
             <div class="card-body">

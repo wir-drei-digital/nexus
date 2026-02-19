@@ -89,5 +89,8 @@ config :phoenix_live_view,
   # Enable helpful, but potentially expensive runtime checks
   enable_expensive_runtime_checks: true
 
+# Offset LiveDebugger port so it doesn't clash with other Phoenix apps
+config :live_debugger, port: 4017
+
 # Disable swoosh api client as it is only required for production adapters.
 config :swoosh, :api_client, false

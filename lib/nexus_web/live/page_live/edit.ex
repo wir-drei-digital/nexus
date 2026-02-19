@@ -43,7 +43,7 @@ defmodule NexusWeb.PageLive.Edit do
         {:ok,
          socket
          |> put_flash(:error, "Page not found")
-         |> push_navigate(to: ~p"/projects/#{project.slug}")}
+         |> push_navigate(to: ~p"/admin/#{project.slug}")}
     end
   end
 
@@ -80,7 +80,7 @@ defmodule NexusWeb.PageLive.Edit do
         if section.type == :rich_text do
           key = Atom.to_string(section.key)
           content = Map.get(template_data, key, Template.default_data(template)[key])
-          push_event(sock, "set_section_content_#{key}", %{content: content})
+          push_event(sock, "tiptap:set_content:#{key}", %{content: content})
         else
           sock
         end
@@ -99,14 +99,15 @@ defmodule NexusWeb.PageLive.Edit do
   end
 
   @impl true
-  def handle_event("section_content_changed", %{"key" => key, "content" => content}, socket) do
+  def handle_event("tiptap:change", %{"key" => key, "content" => content}, socket) do
     template_data = Map.put(socket.assigns.template_data, key, content)
     content_html = render_content_html(socket.assigns.template, template_data)
 
     {:noreply,
      socket
      |> assign(:template_data, template_data)
-     |> assign(:content_html, content_html)}
+     |> assign(:content_html, content_html)
+     |> assign(:save_status, :unsaved)}
   end
 
   @impl true
@@ -136,12 +137,7 @@ defmodule NexusWeb.PageLive.Edit do
   end
 
   @impl true
-  def handle_event("mark_unsaved", _params, socket) do
-    {:noreply, assign(socket, :save_status, :unsaved)}
-  end
-
-  @impl true
-  def handle_event("auto_save", %{"key" => key, "content" => content}, socket) do
+  def handle_event("tiptap:save", %{"key" => key, "content" => content}, socket) do
     template_data = Map.put(socket.assigns.template_data, key, content)
     content_html = render_content_html(socket.assigns.template, template_data)
 
@@ -302,7 +298,7 @@ defmodule NexusWeb.PageLive.Edit do
                 if section.type == :rich_text do
                   key = Atom.to_string(section.key)
 
-                  push_event(sock, "set_section_content_#{key}", %{
+                  push_event(sock, "tiptap:set_content:#{key}", %{
                     content: Map.get(new_data, key)
                   })
                 else
@@ -322,6 +318,11 @@ defmodule NexusWeb.PageLive.Edit do
             {:noreply, put_flash(socket, :error, "Failed to change template")}
         end
     end
+  end
+
+  @impl true
+  def handle_event("tiptap:" <> _, _params, socket) do
+    {:noreply, socket}
   end
 
   @impl true
@@ -644,7 +645,7 @@ defmodule NexusWeb.PageLive.Edit do
           <%!-- Quick links --%>
           <div class="p-5">
             <.link
-              navigate={~p"/projects/#{@project.slug}/pages/#{@page.id}/versions"}
+              navigate={~p"/admin/#{@project.slug}/pages/#{@page.id}/versions"}
               class="flex items-center gap-2 text-sm text-base-content/60 hover:text-base-content"
             >
               <.icon name="hero-clock" class="size-4" /> Version History
@@ -674,17 +675,11 @@ defmodule NexusWeb.PageLive.Edit do
         {@section.label}
         <span :if={@section.required} class="text-error">*</span>
       </label>
-      <div
+      <TiptapPhoenix.Component.tiptap_editor
         id={"tiptap-editor-#{@key}"}
-        phx-hook="TiptapEditor"
-        phx-update="ignore"
-        data-content={
-          Jason.encode!(@value || %{"type" => "doc", "content" => [%{"type" => "paragraph"}]})
-        }
-        data-section-key={@key}
-      >
-        <div data-tiptap-editor></div>
-      </div>
+        content={@value}
+        section_key={@key}
+      />
     </div>
     """
   end
