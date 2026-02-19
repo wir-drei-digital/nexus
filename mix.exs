@@ -85,7 +85,7 @@ defmodule Nexus.MixProject do
       {:dns_cluster, "~> 0.2.0"},
       {:bandit, "~> 1.5"},
       {:tidewave, "~> 0.5", only: [:dev]},
-      {:tiptap_phoenix, path: "../tiptap_phoenix"}
+      {:tiptap_phoenix, github: "wir-drei-digital/tiptap-phoenix"}
     ]
   end
 

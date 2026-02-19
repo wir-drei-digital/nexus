@@ -2,6 +2,6 @@
   "name": "nexus-assets",
   "private": true,
   "dependencies": {
-    "tiptap-phoenix": "file:../../tiptap_phoenix/assets"
+    "tiptap-phoenix": "file:../deps/tiptap_phoenix/assets"
   }
 }
