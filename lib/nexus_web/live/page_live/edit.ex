@@ -1,7 +1,7 @@
 defmodule NexusWeb.PageLive.Edit do
   use NexusWeb, :live_view
 
-  alias Nexus.Content.Templates.{Registry, Renderer, Template}
+  alias Nexus.Content.Templates.{Field, Group, Registry, Renderer, Template}
 
   on_mount {NexusWeb.LiveUserAuth, :live_user_required}
   on_mount {NexusWeb.ProjectScope, :default}
@@ -56,18 +56,18 @@ defmodule NexusWeb.PageLive.Edit do
     template = socket.assigns.template
 
     # Create locale if it doesn't exist yet
-    {socket, _locale_map} =
+    socket =
       if Map.has_key?(locale_map, locale) do
-        {socket, locale_map}
+        socket
       else
         case Nexus.Content.PageLocale.create(%{page_id: page.id, locale: locale}, actor: user) do
           {:ok, page_locale} ->
             locales = [page_locale | socket.assigns.locales]
             new_map = Map.put(locale_map, locale, page_locale)
-            {assign(socket, locales: locales, locale_map: new_map), new_map}
+            assign(socket, locales: locales, locale_map: new_map)
 
           {:error, _} ->
-            {socket, locale_map}
+            socket
         end
       end
 
@@ -75,10 +75,10 @@ defmodule NexusWeb.PageLive.Edit do
     template_data = extract_template_data(version, template)
 
     # Push content to each rich_text editor
-    push_events =
-      Enum.reduce(template.sections, socket, fn section, sock ->
-        if section.type == :rich_text do
-          key = Atom.to_string(section.key)
+    socket =
+      Enum.reduce(Template.all_fields(template), socket, fn field, sock ->
+        if field.type == :rich_text do
+          key = Atom.to_string(field.key)
           content = Map.get(template_data, key, Template.default_data(template)[key])
           push_event(sock, "tiptap:set_content:#{key}", %{content: content})
         else
@@ -87,7 +87,7 @@ defmodule NexusWeb.PageLive.Edit do
       end)
 
     {:noreply,
-     push_events
+     socket
      |> assign(:current_locale, locale)
      |> assign(:version, version)
      |> assign(:template_data, template_data)
@@ -111,14 +111,14 @@ defmodule NexusWeb.PageLive.Edit do
   end
 
   @impl true
-  def handle_event("update_template_field", %{"section" => section_map}, socket)
-      when is_map(section_map) do
+  def handle_event("update_template_field", %{"field" => field_map}, socket)
+      when is_map(field_map) do
     template = socket.assigns.template
 
     template_data =
-      Enum.reduce(section_map, socket.assigns.template_data, fn {key, value}, data ->
-        section = Template.get_section(template, key)
-        coerced = coerce_value(section, value)
+      Enum.reduce(field_map, socket.assigns.template_data, fn {key, value}, data ->
+        field = Template.get_field(template, key)
+        coerced = coerce_value(field, value)
         Map.put(data, key, coerced)
       end)
 
@@ -282,21 +282,21 @@ defmodule NexusWeb.PageLive.Edit do
       new_template ->
         case Ash.update(page, %{template_slug: slug}, action: :update, actor: user) do
           {:ok, updated_page} ->
-            # Migrate existing template_data: keep values for sections that exist in both
+            # Migrate existing template_data: keep values for fields that exist in both
             old_data = socket.assigns.template_data
             default_data = Template.default_data(new_template)
 
             new_data =
-              Map.new(new_template.sections, fn section ->
-                key = Atom.to_string(section.key)
+              Map.new(Template.all_fields(new_template), fn field ->
+                key = Atom.to_string(field.key)
                 {key, Map.get(old_data, key) || Map.get(default_data, key)}
               end)
 
             # Push new content to rich text editors
             socket =
-              Enum.reduce(new_template.sections, socket, fn section, sock ->
-                if section.type == :rich_text do
-                  key = Atom.to_string(section.key)
+              Enum.reduce(Template.all_fields(new_template), socket, fn field, sock ->
+                if field.type == :rich_text do
+                  key = Atom.to_string(field.key)
 
                   push_event(sock, "tiptap:set_content:#{key}", %{
                     content: Map.get(new_data, key)
@@ -431,19 +431,24 @@ defmodule NexusWeb.PageLive.Edit do
   end
 
   defp coerce_value(nil, value), do: value
-  defp coerce_value(%{type: :number}, ""), do: nil
+  defp coerce_value(%Field{type: :number}, ""), do: nil
 
-  defp coerce_value(%{type: :number}, value) when is_binary(value) do
-    case Float.parse(value) do
-      {num, ""} -> num
-      {num, _} -> num
-      :error -> nil
+  defp coerce_value(%Field{type: :number}, value) when is_binary(value) do
+    case Integer.parse(value) do
+      {int, ""} ->
+        int
+
+      _ ->
+        case Float.parse(value) do
+          {num, ""} -> num
+          _ -> nil
+        end
     end
   end
 
-  defp coerce_value(%{type: :toggle}, value) when is_binary(value), do: value == "true"
-  defp coerce_value(%{type: :toggle}, value) when is_boolean(value), do: value
-  defp coerce_value(_section, value), do: value
+  defp coerce_value(%Field{type: :toggle}, value) when is_binary(value), do: value == "true"
+  defp coerce_value(%Field{type: :toggle}, value) when is_boolean(value), do: value
+  defp coerce_value(%Field{}, value), do: value
 
   @impl true
   def render(assigns) do
@@ -484,12 +489,12 @@ defmodule NexusWeb.PageLive.Edit do
               />
             </form>
 
-            <%!-- Template sections --%>
+            <%!-- Template fields --%>
             <form phx-change="update_template_field" class="space-y-6">
-              <.template_section
-                :for={section <- @template.sections}
-                section={section}
-                value={Map.get(@template_data, Atom.to_string(section.key))}
+              <.template_item
+                :for={item <- @template.fields}
+                item={item}
+                template_data={@template_data}
               />
             </form>
           </div>
@@ -497,7 +502,7 @@ defmodule NexusWeb.PageLive.Edit do
 
         <%!-- Right sidebar: Settings --%>
         <aside class="w-80 border-l border-base-200 overflow-y-auto shrink-0">
-          <%!-- Publish section --%>
+          <%!-- Publish --%>
           <div class="p-5 border-b border-base-200">
             <h3 class="font-semibold text-sm mb-3 text-base-content/70 uppercase tracking-wide">
               Publish
@@ -551,7 +556,7 @@ defmodule NexusWeb.PageLive.Edit do
             </div>
           </div>
 
-          <%!-- SEO section --%>
+          <%!-- SEO --%>
           <div class="p-5 border-b border-base-200">
             <h3 class="font-semibold text-sm mb-3 text-base-content/70 uppercase tracking-wide">
               SEO Settings
@@ -610,7 +615,7 @@ defmodule NexusWeb.PageLive.Edit do
             </.form>
           </div>
 
-          <%!-- Page Settings section --%>
+          <%!-- Page Settings --%>
           <div class="p-5 border-b border-base-200">
             <h3 class="font-semibold text-sm mb-3 text-base-content/70 uppercase tracking-wide">
               Page Settings
@@ -634,10 +639,11 @@ defmodule NexusWeb.PageLive.Edit do
               <p :if={@template.description} class="text-xs text-base-content/40">
                 {@template.description}
               </p>
+              <% all_fields = Template.all_fields(@template) %>
               <div class="text-xs text-base-content/40">
-                {length(@template.sections)} {if length(@template.sections) == 1,
-                  do: "section",
-                  else: "sections"}: {Enum.map_join(@template.sections, ", ", & &1.label)}
+                {length(all_fields)} {if length(all_fields) == 1,
+                  do: "field",
+                  else: "fields"}: {Enum.map_join(all_fields, ", ", & &1.label)}
               </div>
             </div>
           </div>
@@ -657,23 +663,59 @@ defmodule NexusWeb.PageLive.Edit do
     """
   end
 
-  # Section rendering components
+  # Template item dispatcher — handles both Field and Group structs
 
-  attr :section, :any, required: true
+  attr :item, :any, required: true
+  attr :template_data, :map, required: true
+
+  defp template_item(%{item: %Field{}} = assigns) do
+    value = Map.get(assigns.template_data, Atom.to_string(assigns.item.key))
+    assigns = assign(assigns, field: assigns.item, value: value)
+
+    ~H"""
+    <.template_field field={@field} value={@value} />
+    """
+  end
+
+  defp template_item(%{item: %Group{}} = assigns) do
+    ~H"""
+    <fieldset>
+      <legend class="text-xs font-semibold text-base-content/60 uppercase tracking-wide mb-3">
+        {@item.label}
+      </legend>
+      <div
+        class="grid gap-4"
+        style={"grid-template-columns: repeat(#{length(@item.columns)}, minmax(0, 1fr))"}
+      >
+        <div :for={column <- @item.columns} class="space-y-4">
+          <.template_field
+            :for={field <- column.fields}
+            field={field}
+            value={Map.get(@template_data, Atom.to_string(field.key))}
+          />
+        </div>
+      </div>
+    </fieldset>
+    """
+  end
+
+  # Field rendering components
+
+  attr :field, :any, required: true
   attr :value, :any, default: nil
 
-  defp template_section(%{section: %{type: :rich_text}} = assigns) do
-    key = Atom.to_string(assigns.section.key)
+  defp template_field(%{field: %{type: :rich_text}} = assigns) do
+    key = Atom.to_string(assigns.field.key)
     assigns = assign(assigns, :key, key)
 
     ~H"""
     <div>
       <label
-        :if={@section.label != "Body"}
+        :if={@field.label != "Body"}
         class="text-xs font-medium text-base-content/60 mb-1 block"
       >
-        {@section.label}
-        <span :if={@section.required} class="text-error">*</span>
+        {@field.label}
+        <span :if={@field.required} class="text-error">*</span>
       </label>
       <TiptapPhoenix.Component.tiptap_editor
         id={"tiptap-editor-#{@key}"}
@@ -684,64 +726,64 @@ defmodule NexusWeb.PageLive.Edit do
     """
   end
 
-  defp template_section(%{section: %{type: :text}} = assigns) do
-    key = Atom.to_string(assigns.section.key)
+  defp template_field(%{field: %{type: :text}} = assigns) do
+    key = Atom.to_string(assigns.field.key)
     assigns = assign(assigns, :key, key)
 
     ~H"""
     <div>
       <label class="text-xs font-medium text-base-content/60 mb-1 block">
-        {@section.label}
-        <span :if={@section.required} class="text-error">*</span>
+        {@field.label}
+        <span :if={@field.required} class="text-error">*</span>
       </label>
       <input
         type="text"
         value={@value || ""}
         phx-debounce="300"
-        name={"section[#{@key}]"}
+        name={"field[#{@key}]"}
         class="input input-bordered w-full"
-        placeholder={@section.label}
+        placeholder={@field.label}
       />
     </div>
     """
   end
 
-  defp template_section(%{section: %{type: :textarea}} = assigns) do
-    key = Atom.to_string(assigns.section.key)
+  defp template_field(%{field: %{type: :textarea}} = assigns) do
+    key = Atom.to_string(assigns.field.key)
     assigns = assign(assigns, :key, key)
 
     ~H"""
     <div>
       <label class="text-xs font-medium text-base-content/60 mb-1 block">
-        {@section.label}
-        <span :if={@section.required} class="text-error">*</span>
+        {@field.label}
+        <span :if={@field.required} class="text-error">*</span>
       </label>
       <textarea
         phx-debounce="300"
-        name={"section[#{@key}]"}
+        name={"field[#{@key}]"}
         class="textarea textarea-bordered w-full"
         rows="4"
-        placeholder={@section.label}
+        placeholder={@field.label}
       >{@value || ""}</textarea>
     </div>
     """
   end
 
-  defp template_section(%{section: %{type: :image}} = assigns) do
-    key = Atom.to_string(assigns.section.key)
+  defp template_field(%{field: %{type: :image}} = assigns) do
+    key = Atom.to_string(assigns.field.key)
     assigns = assign(assigns, :key, key)
 
     ~H"""
     <div>
       <label class="text-xs font-medium text-base-content/60 mb-1 block">
-        {@section.label}
-        <span :if={@section.required} class="text-error">*</span>
+        {@field.label}
+        <span :if={@field.required} class="text-error">*</span>
       </label>
       <input
         type="url"
         value={@value || ""}
         phx-debounce="300"
-        name={"section[#{@key}]"}
+        name={"field[#{@key}]"}
         class="input input-bordered w-full"
         placeholder="https://example.com/image.jpg"
       />
@@ -754,21 +796,21 @@ defmodule NexusWeb.PageLive.Edit do
     """
   end
 
-  defp template_section(%{section: %{type: :url}} = assigns) do
-    key = Atom.to_string(assigns.section.key)
+  defp template_field(%{field: %{type: :url}} = assigns) do
+    key = Atom.to_string(assigns.field.key)
     assigns = assign(assigns, :key, key)
 
     ~H"""
     <div>
       <label class="text-xs font-medium text-base-content/60 mb-1 block">
-        {@section.label}
-        <span :if={@section.required} class="text-error">*</span>
+        {@field.label}
+        <span :if={@field.required} class="text-error">*</span>
       </label>
       <input
         type="url"
         value={@value || ""}
         phx-debounce="300"
-        name={"section[#{@key}]"}
+        name={"field[#{@key}]"}
         class="input input-bordered w-full"
         placeholder="https://..."
       />
@@ -776,40 +818,40 @@ defmodule NexusWeb.PageLive.Edit do
     """
   end
 
-  defp template_section(%{section: %{type: :number}} = assigns) do
-    key = Atom.to_string(assigns.section.key)
+  defp template_field(%{field: %{type: :number}} = assigns) do
+    key = Atom.to_string(assigns.field.key)
     assigns = assign(assigns, :key, key)
 
     ~H"""
     <div>
       <label class="text-xs font-medium text-base-content/60 mb-1 block">
-        {@section.label}
-        <span :if={@section.required} class="text-error">*</span>
+        {@field.label}
+        <span :if={@field.required} class="text-error">*</span>
       </label>
       <input
         type="number"
         value={@value}
         phx-debounce="300"
-        name={"section[#{@key}]"}
+        name={"field[#{@key}]"}
         class="input input-bordered w-full"
       />
     </div>
     """
   end
 
-  defp template_section(%{section: %{type: :select}} = assigns) do
-    key = Atom.to_string(assigns.section.key)
-    options = Map.get(assigns.section.constraints, :options, [])
+  defp template_field(%{field: %{type: :select}} = assigns) do
+    key = Atom.to_string(assigns.field.key)
+    options = Map.get(assigns.field.constraints, :options, [])
     assigns = assign(assigns, key: key, options: options)
 
     ~H"""
     <div>
       <label class="text-xs font-medium text-base-content/60 mb-1 block">
-        {@section.label}
-        <span :if={@section.required} class="text-error">*</span>
+        {@field.label}
+        <span :if={@field.required} class="text-error">*</span>
       </label>
       <select
-        name={"section[#{@key}]"}
+        name={"field[#{@key}]"}
         class="select select-bordered w-full"
       >
         <option value="">Select...</option>
@@ -819,21 +861,21 @@ defmodule NexusWeb.PageLive.Edit do
     """
   end
 
-  defp template_section(%{section: %{type: :toggle}} = assigns) do
-    key = Atom.to_string(assigns.section.key)
+  defp template_field(%{field: %{type: :toggle}} = assigns) do
+    key = Atom.to_string(assigns.field.key)
     assigns = assign(assigns, :key, key)
 
     ~H"""
     <div class="flex items-center gap-3">
-      <input type="hidden" name={"section[#{@key}]"} value="false" />
+      <input type="hidden" name={"field[#{@key}]"} value="false" />
       <input
         type="checkbox"
-        name={"section[#{@key}]"}
+        name={"field[#{@key}]"}
         value="true"
         checked={@value == true}
         class="toggle toggle-primary"
       />
-      <label class="text-sm text-base-content/70">{@section.label}</label>
+      <label class="text-sm text-base-content/70">{@field.label}</label>
     </div>
     """
   end

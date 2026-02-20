@@ -130,7 +130,7 @@ defmodule NexusWeb.PageLive.Versions do
               <div class="text-xs text-base-content/40">
                 {Calendar.strftime(version.inserted_at, "%Y-%m-%d %H:%M:%S")} | {map_size(
                   version.template_data || %{}
-                )} sections
+                )} fields
               </div>
             </div>
             <button

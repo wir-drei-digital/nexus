@@ -23,8 +23,10 @@ defmodule NexusWeb.Layouts do
       <header class="navbar px-4 sm:px-6 lg:px-8 border-b border-base-200">
         <div class="flex-1">
           <.link navigate={~p"/admin"} class="flex items-center gap-2 text-lg">
-            <span class="text-primary text-xl">⟐</span>
-            <span class="font-medium" style="font-family: 'Space Grotesk', sans-serif;">NEXUS</span>
+            <span class="text-primary text-2xl font-bold">⟐</span>
+            <span class="font-medium mb-1" style="font-family: 'Space Grotesk', sans-serif;">
+              NEXUS
+            </span>
           </.link>
         </div>
         <div class="flex-none">
@@ -72,8 +74,10 @@ defmodule NexusWeb.Layouts do
             navigate={~p"/admin"}
             class="text-lg hover:text-primary transition-colors"
           >
-            <span class="text-primary text-xl">⟐</span>
-            <span class="font-medium" style="font-family: 'Space Grotesk', sans-serif;">NEXUS</span>
+            <span class="text-primary text-2xl font-bold">⟐</span>
+            <span class="font-medium mb-1" style="font-family: 'Space Grotesk', sans-serif;">
+              NEXUS
+            </span>
           </.link>
           <.link
             navigate={~p"/admin/#{@project.slug}"}

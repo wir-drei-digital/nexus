@@ -49,13 +49,6 @@ defmodule NexusWeb.Router do
     end
   end
 
-  scope "/api/docs", NexusWeb do
-    pipe_through :browser
-
-    get "/", Api.SwaggerController, :index
-    get "/spec", Api.SpecController, :index
-  end
-
   scope "/", NexusWeb do
     pipe_through :browser
 
@@ -92,13 +85,10 @@ defmodule NexusWeb.Router do
     )
   end
 
-  scope "/api/v1", NexusWeb.Api do
+  scope "/api/v1" do
     pipe_through :public_api
 
-    get "/projects/:slug", ProjectController, :show
-    get "/projects/:slug/folders", FolderController, :index
-    get "/projects/:slug/pages", PageController, :index
-    get "/projects/:slug/pages/*path", PageController, :show
+    forward "/", NexusWeb.AshJsonApiRouter
   end
 
   # Enable LiveDashboard and Swoosh mailbox preview in development

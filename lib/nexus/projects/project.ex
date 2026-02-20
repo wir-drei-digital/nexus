@@ -3,11 +3,21 @@ defmodule Nexus.Projects.Project do
     otp_app: :nexus,
     domain: Nexus.Projects,
     data_layer: AshPostgres.DataLayer,
-    authorizers: [Ash.Policy.Authorizer]
+    authorizers: [Ash.Policy.Authorizer],
+    extensions: [AshJsonApi.Resource]
 
   postgres do
     table "projects"
     repo Nexus.Repo
+  end
+
+  json_api do
+    type "projects"
+
+    routes do
+      base "/projects"
+      get :get_by_slug, route: "/:slug", primary?: true
+    end
   end
 
   code_interface do
@@ -62,9 +72,10 @@ defmodule Nexus.Projects.Project do
     end
 
     policy action_type(:read) do
-      description "Members can read their projects; public projects are visible to all"
+      description "Members can read their projects; public projects are visible to all; API keys can read their scoped project"
       authorize_if expr(is_public == true)
       authorize_if expr(exists(memberships, user_id == ^actor(:id)))
+      authorize_if expr(id == ^actor(:project_id))
     end
 
     policy action_type(:update) do

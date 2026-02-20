@@ -45,7 +45,6 @@ defmodule Nexus.MixProject do
       {:picosat_elixir, "~> 0.2"},
       {:sourceror, "~> 1.8", only: [:dev, :test]},
       {:oban, "~> 2.0"},
-      {:open_api_spex, "~> 3.0"},
       {:usage_rules, "~> 1.0", only: [:dev]},
       {:ash_paper_trail, "~> 0.5"},
       {:live_debugger, "~> 0.6", only: [:dev]},

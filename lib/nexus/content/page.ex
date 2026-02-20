@@ -4,6 +4,7 @@ defmodule Nexus.Content.Page do
     domain: Nexus.Content,
     data_layer: AshPostgres.DataLayer,
     authorizers: [Ash.Policy.Authorizer],
+    extensions: [AshJsonApi.Resource],
     primary_read_warning?: false
 
   postgres do
@@ -11,11 +12,26 @@ defmodule Nexus.Content.Page do
     repo Nexus.Repo
   end
 
+  json_api do
+    type "pages"
+
+    routes do
+      base "/projects/:project_slug/pages"
+      index :list_for_project_slug, primary?: true
+
+      route :get, "/published", :get_published_content do
+        query_params [:path, :locale]
+      end
+    end
+  end
+
   code_interface do
     define :create
     define :read
     define :get_by_path, args: [:project_id, :full_path]
     define :list_for_project, args: [:project_id]
+    define :list_for_project_slug, args: [:project_slug]
+    define :get_published_content, args: [:project_slug, :path, :locale]
     define :update
     define :publish
     define :unpublish
@@ -55,6 +71,24 @@ defmodule Nexus.Content.Page do
     read :list_for_project do
       argument :project_id, :uuid, allow_nil?: false
       filter expr(project_id == ^arg(:project_id) and is_nil(deleted_at))
+    end
+
+    read :list_for_project_slug do
+      argument :project_slug, :ci_string, allow_nil?: false
+
+      prepare build(load: [project: []])
+
+      filter expr(project.slug == ^arg(:project_slug) and is_nil(deleted_at))
+    end
+
+    action :get_published_content do
+      argument :project_slug, :ci_string, allow_nil?: false
+      argument :path, :string, allow_nil?: false
+      argument :locale, :string, allow_nil?: false
+
+      returns :map
+
+      run Nexus.Content.Actions.GetPublishedContent
     end
 
     update :update do
@@ -105,6 +139,7 @@ defmodule Nexus.Content.Page do
     policy action_type(:read) do
       authorize_if expr(exists(project.memberships, user_id == ^actor(:id)))
       authorize_if expr(project.is_public == true and status == :published)
+      authorize_if expr(project_id == ^actor(:project_id))
     end
 
     policy action_type(:create) do

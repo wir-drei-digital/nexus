@@ -3,17 +3,28 @@ defmodule Nexus.Content.Folder do
     otp_app: :nexus,
     domain: Nexus.Content,
     data_layer: AshPostgres.DataLayer,
-    authorizers: [Ash.Policy.Authorizer]
+    authorizers: [Ash.Policy.Authorizer],
+    extensions: [AshJsonApi.Resource]
 
   postgres do
     table "folders"
     repo Nexus.Repo
   end
 
+  json_api do
+    type "folders"
+
+    routes do
+      base "/projects/:project_slug/folders"
+      index :for_project_slug, primary?: true
+    end
+  end
+
   code_interface do
     define :create
     define :read
     define :for_project, args: [:project_id]
+    define :for_project_slug, args: [:project_slug]
     define :get_by_path, args: [:project_id, :full_path]
     define :update
     define :destroy
@@ -32,6 +43,14 @@ defmodule Nexus.Content.Folder do
     read :for_project do
       argument :project_id, :uuid, allow_nil?: false
       filter expr(project_id == ^arg(:project_id))
+    end
+
+    read :for_project_slug do
+      argument :project_slug, :ci_string, allow_nil?: false
+
+      prepare build(load: [project: []])
+
+      filter expr(project.slug == ^arg(:project_slug))
     end
 
     read :get_by_path do
@@ -55,6 +74,7 @@ defmodule Nexus.Content.Folder do
     policy action_type(:read) do
       authorize_if expr(exists(project.memberships, user_id == ^actor(:id)))
       authorize_if expr(project.is_public == true)
+      authorize_if expr(project_id == ^actor(:project_id))
     end
 
     policy action_type(:create) do

@@ -3,38 +3,71 @@ defmodule Nexus.Content.Templates.Registry do
   Registry of all available page templates.
   """
 
-  alias Nexus.Content.Templates.{Section, Template}
+  alias Nexus.Content.Templates.{Column, Field, Group, Template}
 
   @templates %{
     "default" => %Template{
       slug: "default",
       label: "Default",
       description: "A standard page with one rich text body.",
-      sections: [
-        %Section{key: :body, type: :rich_text, label: "Body"}
+      fields: [
+        %Field{key: :body, type: :rich_text, label: "Body"}
       ]
     },
     "blog_post" => %Template{
       slug: "blog_post",
       label: "Blog Post",
       description: "A blog post with hero image, body, author, and featured toggle.",
-      sections: [
-        %Section{key: :hero_image, type: :image, label: "Hero Image"},
-        %Section{key: :body, type: :rich_text, label: "Body", required: true},
-        %Section{key: :author_name, type: :text, label: "Author Name"},
-        %Section{key: :featured, type: :toggle, label: "Featured Post", default: false}
+      fields: [
+        %Field{key: :hero_image, type: :image, label: "Hero Image"},
+        %Field{key: :body, type: :rich_text, label: "Body", required: true},
+        %Group{
+          key: :metadata,
+          label: "Metadata",
+          columns: [
+            %Column{
+              fields: [
+                %Field{key: :author_name, type: :text, label: "Author Name"}
+              ]
+            },
+            %Column{
+              fields: [
+                %Field{key: :featured, type: :toggle, label: "Featured Post", default: false}
+              ]
+            }
+          ]
+        }
       ]
     },
     "landing_page" => %Template{
       slug: "landing_page",
       label: "Landing Page",
       description: "A structured landing page with headline, CTA, and body content.",
-      sections: [
-        %Section{key: :headline, type: :text, label: "Headline", required: true},
-        %Section{key: :subheadline, type: :textarea, label: "Subheadline"},
-        %Section{key: :cta_text, type: :text, label: "CTA Button Text", default: "Get Started"},
-        %Section{key: :cta_url, type: :url, label: "CTA Button URL"},
-        %Section{key: :body, type: :rich_text, label: "Body Content"}
+      fields: [
+        %Field{key: :headline, type: :text, label: "Headline", required: true},
+        %Field{key: :subheadline, type: :textarea, label: "Subheadline"},
+        %Group{
+          key: :cta,
+          label: "Call to Action",
+          columns: [
+            %Column{
+              fields: [
+                %Field{
+                  key: :cta_text,
+                  type: :text,
+                  label: "CTA Button Text",
+                  default: "Get Started"
+                }
+              ]
+            },
+            %Column{
+              fields: [
+                %Field{key: :cta_url, type: :url, label: "CTA Button URL"}
+              ]
+            }
+          ]
+        },
+        %Field{key: :body, type: :rich_text, label: "Body Content"}
       ]
     }
   }
