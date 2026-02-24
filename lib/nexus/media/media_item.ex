@@ -69,6 +69,8 @@ defmodule Nexus.Media.MediaItem do
 
     destroy :destroy do
       primary? true
+      require_atomic? false
+      change Nexus.Media.Changes.DeleteFiles
     end
   end
 

@@ -91,5 +91,37 @@ defmodule Nexus.Media.MediaItemTest do
       items = Nexus.Media.MediaItem.list_for_project!(project.id, actor: user)
       assert Enum.empty?(items)
     end
+
+    test "deletes stored files on destroy", %{user: user, project: project} do
+      alias Nexus.Media.Storage
+
+      # Store a fake file
+      path = Storage.generate_path(project.id, "cleanup-test", "test.jpg")
+      {:ok, _} = Storage.store(path, "fake image content")
+
+      # Create item pointing to that file, then add variants via update_status
+      thumb_path = String.replace(path, ".jpg", "_thumb.jpg")
+      item = create_media_item(project, user, %{file_path: path})
+
+      item =
+        Nexus.Media.MediaItem.update_status!(item, %{
+          status: :ready,
+          variants: %{"thumb" => thumb_path}
+        })
+
+      # Store the variant too
+      {:ok, _} = Storage.store(item.variants["thumb"], "fake thumb")
+
+      # Verify files exist before destroy
+      assert {:ok, _} = Storage.get(path)
+      assert {:ok, _} = Storage.get(item.variants["thumb"])
+
+      # Destroy
+      assert :ok = Nexus.Media.MediaItem.destroy(item, actor: user)
+
+      # Verify files are gone
+      assert {:error, :not_found} = Storage.get(path)
+      assert {:error, :not_found} = Storage.get(item.variants["thumb"])
+    end
   end
 end
