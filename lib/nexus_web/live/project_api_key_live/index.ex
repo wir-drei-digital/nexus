@@ -116,6 +116,7 @@ defmodule NexusWeb.ProjectApiKeyLive.Index do
       project_role={@project_role}
       sidebar_folders={@sidebar_folders}
       sidebar_pages={@sidebar_pages}
+      page_titles={@page_titles}
       creating_content_type={@creating_content_type}
       breadcrumbs={[{"API Keys", nil}]}
     >

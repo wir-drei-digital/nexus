@@ -71,7 +71,7 @@ config :spark,
 config :nexus,
   ecto_repos: [Nexus.Repo],
   generators: [timestamp_type: :utc_datetime],
-  ash_domains: [Nexus.Accounts, Nexus.Projects, Nexus.Content]
+  ash_domains: [Nexus.Accounts, Nexus.Projects, Nexus.Content, Nexus.AI]
 
 # Configure the endpoint
 config :nexus, NexusWeb.Endpoint,

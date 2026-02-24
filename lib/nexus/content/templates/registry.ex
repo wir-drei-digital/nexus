@@ -11,7 +11,7 @@ defmodule Nexus.Content.Templates.Registry do
       label: "Default",
       description: "A standard page with one rich text body.",
       fields: [
-        %Field{key: :body, type: :rich_text, label: "Body"}
+        %Field{key: :body, type: :rich_text, label: "Body", ai_refine: true}
       ]
     },
     "blog_post" => %Template{
@@ -20,7 +20,7 @@ defmodule Nexus.Content.Templates.Registry do
       description: "A blog post with hero image, body, author, and featured toggle.",
       fields: [
         %Field{key: :hero_image, type: :image, label: "Hero Image"},
-        %Field{key: :body, type: :rich_text, label: "Body", required: true},
+        %Field{key: :body, type: :rich_text, label: "Body", required: true, ai_refine: true},
         %Group{
           key: :metadata,
           label: "Metadata",
@@ -45,7 +45,7 @@ defmodule Nexus.Content.Templates.Registry do
       description: "A structured landing page with headline, CTA, and body content.",
       fields: [
         %Field{key: :headline, type: :text, label: "Headline", required: true},
-        %Field{key: :subheadline, type: :textarea, label: "Subheadline"},
+        %Field{key: :subheadline, type: :textarea, label: "Subheadline", ai_refine: true},
         %Group{
           key: :cta,
           label: "Call to Action",
@@ -67,7 +67,7 @@ defmodule Nexus.Content.Templates.Registry do
             }
           ]
         },
-        %Field{key: :body, type: :rich_text, label: "Body Content"}
+        %Field{key: :body, type: :rich_text, label: "Body Content", ai_refine: true}
       ]
     }
   }

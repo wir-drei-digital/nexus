@@ -45,3 +45,6 @@ nexus-*.tar
 npm-debug.log
 /assets/node_modules/
 
+.env
+
+/.hex-docs

@@ -37,7 +37,10 @@ defmodule NexusWeb.PageLive.Edit do
          |> assign(:meta_description, (version && version.meta_description) || "")
          |> assign(:meta_keywords, (version && Enum.join(version.meta_keywords, ", ")) || "")
          |> assign(:save_status, if(version, do: :saved, else: :unsaved))
-         |> assign(:auto_save_ref, nil)}
+         |> assign(:auto_save_ref, nil)
+         |> assign(:seo_generating, false)
+         |> assign(:refining_keys, [])
+         |> assign(:refine_dialog, nil)}
 
       {:error, _} ->
         {:ok,
@@ -154,15 +157,19 @@ defmodule NexusWeb.PageLive.Edit do
   def handle_event("update_meta", params, socket) do
     socket = cancel_auto_save_timer(socket)
 
+    new_title = Map.get(params, "title", socket.assigns.title)
+
     socket =
       socket
-      |> assign(:title, Map.get(params, "title", socket.assigns.title))
+      |> assign(:title, new_title)
       |> assign(
         :meta_description,
         Map.get(params, "meta_description", socket.assigns.meta_description)
       )
       |> assign(:meta_keywords, Map.get(params, "meta_keywords", socket.assigns.meta_keywords))
       |> assign(:save_status, :unsaved)
+      |> maybe_update_slug(new_title)
+      |> update(:page_titles, &Map.put(&1, socket.assigns.page.id, new_title))
 
     ref = Process.send_after(self(), :auto_save_meta, 3_000)
 
@@ -326,9 +333,158 @@ defmodule NexusWeb.PageLive.Edit do
   end
 
   @impl true
+  def handle_event("generate_seo", _params, socket) do
+    title = socket.assigns.title
+    template_data = socket.assigns.template_data
+
+    {:noreply,
+     socket
+     |> assign(:seo_generating, true)
+     |> start_async(:generate_seo, fn ->
+       Nexus.AI.Assistant.generate_seo(title, Jason.encode!(template_data))
+     end)}
+  end
+
+  @impl true
+  def handle_event("open_refine_dialog", %{"key" => key}, socket) do
+    field = Template.get_field(socket.assigns.template, key)
+    label = if field, do: field.label, else: key
+    field_type = if field, do: field.type, else: :rich_text
+
+    {:noreply, assign(socket, :refine_dialog, %{key: key, label: label, field_type: field_type})}
+  end
+
+  @impl true
+  def handle_event("close_refine_dialog", _params, socket) do
+    {:noreply, assign(socket, :refine_dialog, nil)}
+  end
+
+  @impl true
+  def handle_event("refine_content", %{"key" => key, "instructions" => instructions}, socket) do
+    if key in socket.assigns.refining_keys do
+      {:noreply, assign(socket, :refine_dialog, nil)}
+    else
+      content = Map.get(socket.assigns.template_data, key)
+      template = socket.assigns.template
+      field = Template.get_field(template, key)
+      field_label = if field, do: field.label, else: key
+      field_type = if field, do: field.type, else: :rich_text
+
+      content_str =
+        case field_type do
+          :rich_text when is_map(content) -> Jason.encode!(content)
+          :rich_text -> Jason.encode!(Nexus.AI.ProseMirror.default_doc())
+          _ -> to_string(content || "")
+        end
+
+      context = build_page_context(template, socket.assigns.template_data)
+
+      {:noreply,
+       socket
+       |> assign(:refine_dialog, nil)
+       |> update(:refining_keys, &[key | &1])
+       |> start_async({:refine_content, key}, fn ->
+         case Nexus.AI.Assistant.refine_content(content_str, instructions, context, field_label) do
+           {:ok, markdown} when field_type == :rich_text ->
+             case Nexus.AI.ProseMirror.from_markdown(markdown) do
+               {:ok, doc} -> {:rich_text, doc}
+               {:error, reason} -> {:error, "Failed to parse refined content: #{inspect(reason)}"}
+             end
+
+           {:ok, markdown} ->
+             {:plain_text, String.trim(markdown)}
+
+           {:error, reason} ->
+             {:error, reason}
+         end
+       end)}
+    end
+  end
+
+  @impl true
   def handle_event(event, params, socket)
       when event in ~w(reorder_tree_item start_creating_page start_creating_folder cancel_inline_create save_inline_content) do
     NexusWeb.ContentTreeHandlers.handle_event(event, params, socket)
+  end
+
+  @impl true
+  def handle_async(:generate_seo, {:ok, {:ok, result}}, socket) do
+    ref = Process.send_after(self(), :auto_save_meta, 500)
+
+    {:noreply,
+     socket
+     |> cancel_auto_save_timer()
+     |> assign(:seo_generating, false)
+     |> assign(:meta_description, result["meta_description"])
+     |> assign(:meta_keywords, Enum.join(result["meta_keywords"] || [], ", "))
+     |> assign(:save_status, :unsaved)
+     |> assign(:auto_save_ref, ref)
+     |> put_flash(:info, "SEO generated successfully")}
+  end
+
+  @impl true
+  def handle_async(:generate_seo, {:ok, {:error, reason}}, socket) do
+    {:noreply,
+     socket
+     |> assign(:seo_generating, false)
+     |> put_flash(:error, "Failed to generate SEO: #{inspect(reason)}")}
+  end
+
+  @impl true
+  def handle_async(:generate_seo, {:exit, _reason}, socket) do
+    {:noreply,
+     socket
+     |> assign(:seo_generating, false)
+     |> put_flash(:error, "SEO generation failed unexpectedly")}
+  end
+
+  @impl true
+  def handle_async({:refine_content, key}, {:ok, {:rich_text, prosemirror_doc}}, socket) do
+    socket = cancel_auto_save_timer(socket)
+    template_data = Map.put(socket.assigns.template_data, key, prosemirror_doc)
+    content_html = render_content_html(socket.assigns.template, template_data)
+    ref = Process.send_after(self(), :auto_save_meta, 500)
+
+    {:noreply,
+     socket
+     |> update(:refining_keys, &List.delete(&1, key))
+     |> assign(:template_data, template_data)
+     |> assign(:content_html, content_html)
+     |> assign(:save_status, :unsaved)
+     |> assign(:auto_save_ref, ref)
+     |> push_event("tiptap:set_content:#{key}", %{content: prosemirror_doc})}
+  end
+
+  @impl true
+  def handle_async({:refine_content, key}, {:ok, {:plain_text, text}}, socket) do
+    socket = cancel_auto_save_timer(socket)
+    template_data = Map.put(socket.assigns.template_data, key, text)
+    content_html = render_content_html(socket.assigns.template, template_data)
+    ref = Process.send_after(self(), :auto_save_meta, 500)
+
+    {:noreply,
+     socket
+     |> update(:refining_keys, &List.delete(&1, key))
+     |> assign(:template_data, template_data)
+     |> assign(:content_html, content_html)
+     |> assign(:save_status, :unsaved)
+     |> assign(:auto_save_ref, ref)}
+  end
+
+  @impl true
+  def handle_async({:refine_content, key}, {:ok, {:error, reason}}, socket) do
+    {:noreply,
+     socket
+     |> update(:refining_keys, &List.delete(&1, key))
+     |> put_flash(:error, "Failed to refine content: #{inspect(reason)}")}
+  end
+
+  @impl true
+  def handle_async({:refine_content, key}, {:exit, _reason}, socket) do
+    {:noreply,
+     socket
+     |> update(:refining_keys, &List.delete(&1, key))
+     |> put_flash(:error, "Content refinement failed unexpectedly")}
   end
 
   @impl true
@@ -396,6 +552,34 @@ defmodule NexusWeb.PageLive.Edit do
     assign(socket, :auto_save_ref, nil)
   end
 
+  defp maybe_update_slug(socket, title) do
+    new_slug = slugify(title)
+    page = socket.assigns.page
+
+    if new_slug != "" && new_slug != to_string(page.slug) do
+      case Ash.update(page, %{slug: new_slug},
+             action: :update,
+             actor: socket.assigns.current_user
+           ) do
+        {:ok, updated_page} -> assign(socket, :page, updated_page)
+        {:error, _} -> socket
+      end
+    else
+      socket
+    end
+  end
+
+  defp slugify(title) when is_binary(title) do
+    title
+    |> String.downcase()
+    |> String.replace(~r/[^\w\s-]/u, "")
+    |> String.replace(~r/[\s_]+/, "-")
+    |> String.replace(~r/-+/, "-")
+    |> String.trim("-")
+  end
+
+  defp slugify(_), do: ""
+
   defp parse_keywords(str) do
     str
     |> String.split(",")
@@ -415,6 +599,26 @@ defmodule NexusWeb.PageLive.Edit do
       {:ok, locales} -> locales
       {:error, _} -> []
     end
+  end
+
+  defp build_page_context(template, template_data) do
+    Template.all_fields(template)
+    |> Enum.map(fn field ->
+      key = Atom.to_string(field.key)
+      value = Map.get(template_data, key)
+
+      text =
+        case field.type do
+          :rich_text -> Nexus.AI.ProseMirror.extract_text(value)
+          type when type in [:text, :textarea] -> to_string(value || "")
+          _ -> ""
+        end
+        |> String.trim()
+
+      if text != "", do: "### #{field.label}\n#{text}", else: nil
+    end)
+    |> Enum.reject(&is_nil/1)
+    |> Enum.join("\n\n")
   end
 
   defp extract_template_data(nil, template), do: Template.default_data(template)
@@ -459,8 +663,9 @@ defmodule NexusWeb.PageLive.Edit do
       project_role={@project_role}
       sidebar_folders={@sidebar_folders}
       sidebar_pages={@sidebar_pages}
+      page_titles={@page_titles}
       creating_content_type={@creating_content_type}
-      active_path={to_string(@page.full_path)}
+      active_page_id={@page.id}
       breadcrumbs={[{to_string(@page.slug), nil}]}
     >
       <div class="flex h-full">
@@ -495,6 +700,7 @@ defmodule NexusWeb.PageLive.Edit do
                 :for={item <- @template.fields}
                 item={item}
                 template_data={@template_data}
+                refining_keys={@refining_keys}
               />
             </form>
           </div>
@@ -563,25 +769,9 @@ defmodule NexusWeb.PageLive.Edit do
             </h3>
             <.form for={%{}} phx-change="update_meta" class="space-y-3">
               <div>
-                <div class="flex items-center justify-between mb-1">
-                  <span class="text-xs text-base-content/60">Meta Title</span>
-                  <span class="text-xs text-base-content/40">
-                    {String.length(@title)}/60
-                  </span>
-                </div>
-                <.input
-                  type="text"
-                  name="title"
-                  value={@title}
-                  phx-debounce="300"
-                  class="input input-sm w-full"
-                  placeholder="Page title for search engines"
-                />
-              </div>
-              <div>
                 <span class="text-xs text-base-content/60 mb-1 block">URL Slug</span>
                 <div class="input input-sm flex items-center w-full text-base-content/40 text-xs font-mono">
-                  /{@page.full_path}
+                  {slugify(@title)}
                 </div>
               </div>
               <div>
@@ -612,6 +802,16 @@ defmodule NexusWeb.PageLive.Edit do
                   placeholder="comma, separated, keywords"
                 />
               </div>
+              <.button
+                type="button"
+                phx-click="generate_seo"
+                class="btn btn-sm btn-ghost w-full border border-base-content/20"
+                disabled={@seo_generating}
+              >
+                <span :if={@seo_generating} class="loading loading-spinner loading-xs"></span>
+                <.icon :if={!@seo_generating} name="hero-sparkles-mini" class="size-4" />
+                {if @seo_generating, do: "Generating with AI...", else: "Generate with AI"}
+              </.button>
             </.form>
           </div>
 
@@ -659,6 +859,48 @@ defmodule NexusWeb.PageLive.Edit do
           </div>
         </aside>
       </div>
+
+      <%!-- Refine with AI dialog --%>
+      <dialog
+        :if={@refine_dialog}
+        class="modal modal-open"
+        phx-window-keydown="close_refine_dialog"
+        phx-key="Escape"
+      >
+        <div class="modal-box max-w-md">
+          <h3 class="font-bold text-lg flex items-center gap-2">
+            <.icon name="hero-sparkles-mini" class="size-5" /> Refine "{@refine_dialog.label}"
+          </h3>
+          <form phx-submit="refine_content" class="mt-4 space-y-4">
+            <input type="hidden" name="key" value={@refine_dialog.key} />
+            <div>
+              <label class="text-sm text-base-content/70 mb-1 block">
+                What should the AI do?
+              </label>
+              <textarea
+                name="instructions"
+                class="textarea textarea-bordered w-full"
+                rows="3"
+                placeholder="e.g. Make it more concise, Summarize the body content here, Fix grammar..."
+                autofocus
+                required
+              ></textarea>
+              <p class="text-xs text-base-content/40 mt-1">
+                The AI has access to all page fields for context.
+              </p>
+            </div>
+            <div class="modal-action">
+              <button type="button" phx-click="close_refine_dialog" class="btn btn-ghost btn-sm">
+                Cancel
+              </button>
+              <button type="submit" class="btn btn-primary btn-sm gap-1">
+                <.icon name="hero-sparkles-mini" class="size-4" /> Refine
+              </button>
+            </div>
+          </form>
+        </div>
+        <div class="modal-backdrop" phx-click="close_refine_dialog"></div>
+      </dialog>
     </Layouts.project>
     """
   end
@@ -667,13 +909,14 @@ defmodule NexusWeb.PageLive.Edit do
 
   attr :item, :any, required: true
   attr :template_data, :map, required: true
+  attr :refining_keys, :list, default: []
 
   defp template_item(%{item: %Field{}} = assigns) do
     value = Map.get(assigns.template_data, Atom.to_string(assigns.item.key))
     assigns = assign(assigns, field: assigns.item, value: value)
 
     ~H"""
-    <.template_field field={@field} value={@value} />
+    <.template_field field={@field} value={@value} refining_keys={@refining_keys} />
     """
   end
 
@@ -692,6 +935,7 @@ defmodule NexusWeb.PageLive.Edit do
             :for={field <- column.fields}
             field={field}
             value={Map.get(@template_data, Atom.to_string(field.key))}
+            refining_keys={@refining_keys}
           />
         </div>
       </div>
@@ -703,20 +947,25 @@ defmodule NexusWeb.PageLive.Edit do
 
   attr :field, :any, required: true
   attr :value, :any, default: nil
+  attr :refining_keys, :list, default: []
 
   defp template_field(%{field: %{type: :rich_text}} = assigns) do
     key = Atom.to_string(assigns.field.key)
-    assigns = assign(assigns, :key, key)
+    is_refining = Enum.member?(assigns.refining_keys, key)
+    assigns = assign(assigns, :key, key) |> assign(:is_refining, is_refining)
 
     ~H"""
     <div>
-      <label
-        :if={@field.label != "Body"}
-        class="text-xs font-medium text-base-content/60 mb-1 block"
-      >
-        {@field.label}
-        <span :if={@field.required} class="text-error">*</span>
-      </label>
+      <div class="flex items-center justify-between mb-1">
+        <label
+          :if={@field.label != "Body"}
+          class="text-xs font-medium text-base-content/60"
+        >
+          {@field.label}
+          <span :if={@field.required} class="text-error">*</span>
+        </label>
+        <.refine_button :if={@field.ai_refine} key={@key} is_refining={@is_refining} />
+      </div>
       <TiptapPhoenix.Component.tiptap_editor
         id={"tiptap-editor-#{@key}"}
         content={@value}
@@ -750,14 +999,18 @@ defmodule NexusWeb.PageLive.Edit do
 
   defp template_field(%{field: %{type: :textarea}} = assigns) do
     key = Atom.to_string(assigns.field.key)
-    assigns = assign(assigns, :key, key)
+    is_refining = Enum.member?(assigns.refining_keys, key)
+    assigns = assign(assigns, :key, key) |> assign(:is_refining, is_refining)
 
     ~H"""
     <div>
-      <label class="text-xs font-medium text-base-content/60 mb-1 block">
-        {@field.label}
-        <span :if={@field.required} class="text-error">*</span>
-      </label>
+      <div class="flex items-center justify-between mb-1">
+        <label class="text-xs font-medium text-base-content/60">
+          {@field.label}
+          <span :if={@field.required} class="text-error">*</span>
+        </label>
+        <.refine_button :if={@field.ai_refine} key={@key} is_refining={@is_refining} />
+      </div>
       <textarea
         phx-debounce="300"
         name={"field[#{@key}]"}
@@ -877,6 +1130,25 @@ defmodule NexusWeb.PageLive.Edit do
       />
       <label class="text-sm text-base-content/70">{@field.label}</label>
     </div>
+    """
+  end
+
+  attr :key, :string, required: true
+  attr :is_refining, :boolean, default: false
+
+  defp refine_button(assigns) do
+    ~H"""
+    <button
+      type="button"
+      phx-click="open_refine_dialog"
+      phx-value-key={@key}
+      disabled={@is_refining}
+      class="btn btn-ghost btn-xs gap-1"
+    >
+      <span :if={@is_refining} class="loading loading-spinner loading-xs"></span>
+      <.icon :if={!@is_refining} name="hero-sparkles-mini" class="size-3.5" />
+      {if @is_refining, do: "Refining...", else: "Refine with AI"}
+    </button>
     """
   end
 

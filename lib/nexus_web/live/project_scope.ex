@@ -13,6 +13,7 @@ defmodule NexusWeb.ProjectScope do
       {:ok, project} ->
         membership = get_membership(project.id, user.id)
         {sidebar_folders, sidebar_pages} = load_sidebar_data(project.id, user)
+        page_titles = load_page_titles(sidebar_pages, project.default_locale)
 
         {:cont,
          socket
@@ -21,6 +22,7 @@ defmodule NexusWeb.ProjectScope do
          |> assign(:project_role, membership && membership.role)
          |> assign(:sidebar_folders, sidebar_folders)
          |> assign(:sidebar_pages, sidebar_pages)
+         |> assign(:page_titles, page_titles)
          |> assign(:creating_content_type, nil)}
 
       {:error, _} ->
@@ -42,6 +44,21 @@ defmodule NexusWeb.ProjectScope do
     |> case do
       {:ok, membership} -> membership
       _ -> nil
+    end
+  end
+
+  defp load_page_titles(pages, default_locale) do
+    require Ash.Query
+
+    page_ids = Enum.map(pages, & &1.id)
+
+    case Nexus.Content.PageVersion
+         |> Ash.Query.filter(
+           page_id in ^page_ids and locale == ^default_locale and is_current == true
+         )
+         |> Ash.read(authorize?: false) do
+      {:ok, versions} -> Map.new(versions, &{&1.page_id, &1.title})
+      _ -> %{}
     end
   end
 

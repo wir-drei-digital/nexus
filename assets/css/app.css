@@ -105,6 +105,11 @@
 
 @import "tiptap-phoenix/css/tiptap.css";
 
+/* Position the tiptap drag handle in the page's outer padding gutter */
+.drag-handle {
+  left: -28px !important;
+}
+
 /* This file is for your main application CSS */
 
 /* Light mode: use darker borders for better visibility */

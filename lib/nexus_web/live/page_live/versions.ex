@@ -79,8 +79,9 @@ defmodule NexusWeb.PageLive.Versions do
       project_role={@project_role}
       sidebar_folders={@sidebar_folders}
       sidebar_pages={@sidebar_pages}
+      page_titles={@page_titles}
       creating_content_type={@creating_content_type}
-      active_path={to_string(@page.full_path)}
+      active_page_id={@page.id}
       breadcrumbs={[
         {to_string(@page.slug), ~p"/admin/#{@project.slug}/pages/#{@page.id}/edit"},
         {"Versions", nil}

@@ -27,14 +27,10 @@ defmodule NexusWeb.ContentTreeHandlers do
 
     case Nexus.Content.Page.create(attrs, actor: socket.assigns.current_user) do
       {:ok, page} ->
-        {folders, pages} =
-          load_sidebar_data(socket.assigns.project.id, socket.assigns.current_user)
-
         {:noreply,
          socket
          |> assign(:creating_content_type, nil)
-         |> assign(:sidebar_folders, folders)
-         |> assign(:sidebar_pages, pages)
+         |> reload_sidebar()
          |> push_navigate(to: "/admin/#{socket.assigns.project.slug}/pages/#{page.id}/edit")}
 
       {:error, _} ->
@@ -55,14 +51,10 @@ defmodule NexusWeb.ContentTreeHandlers do
 
     case Nexus.Content.Folder.create(attrs, actor: socket.assigns.current_user) do
       {:ok, _folder} ->
-        {folders, pages} =
-          load_sidebar_data(socket.assigns.project.id, socket.assigns.current_user)
-
         {:noreply,
          socket
          |> assign(:creating_content_type, nil)
-         |> assign(:sidebar_folders, folders)
-         |> assign(:sidebar_pages, pages)
+         |> reload_sidebar()
          |> put_flash(:info, "Folder created")}
 
       {:error, _} ->
@@ -87,7 +79,6 @@ defmodule NexusWeb.ContentTreeHandlers do
     } = params
 
     user = socket.assigns.current_user
-    project = socket.assigns.project
 
     result =
       case item_type do
@@ -100,12 +91,9 @@ defmodule NexusWeb.ContentTreeHandlers do
 
     case result do
       :ok ->
-        {folders, pages} = load_sidebar_data(project.id, user)
-
         {:noreply,
          socket
-         |> assign(:sidebar_folders, folders)
-         |> assign(:sidebar_pages, pages)
+         |> reload_sidebar()
          |> push_event("tree_updated", %{success: true})}
 
       {:error, reason} ->
@@ -187,19 +175,46 @@ defmodule NexusWeb.ContentTreeHandlers do
     end)
   end
 
-  defp load_sidebar_data(project_id, user) do
+  defp reload_sidebar(socket) do
+    project = socket.assigns.project
+    user = socket.assigns.current_user
+
     folders =
-      case Nexus.Content.Folder.for_project(project_id, actor: user) do
+      case Nexus.Content.Folder.for_project(project.id, actor: user) do
         {:ok, folders} -> folders
         _ -> []
       end
 
     pages =
-      case Nexus.Content.Page.list_for_project(project_id, actor: user) do
+      case Nexus.Content.Page.list_for_project(project.id, actor: user) do
         {:ok, pages} -> pages
         _ -> []
       end
 
-    {folders, pages}
+    require Ash.Query
+
+    page_titles =
+      case pages do
+        [] ->
+          %{}
+
+        pages ->
+          page_ids = Enum.map(pages, & &1.id)
+
+          case Nexus.Content.PageVersion
+               |> Ash.Query.filter(
+                 page_id in ^page_ids and locale == ^project.default_locale and
+                   is_current == true
+               )
+               |> Ash.read(authorize?: false) do
+            {:ok, versions} -> Map.new(versions, &{&1.page_id, &1.title})
+            _ -> %{}
+          end
+      end
+
+    socket
+    |> assign(:sidebar_folders, folders)
+    |> assign(:sidebar_pages, pages)
+    |> assign(:page_titles, page_titles)
   end
 end

@@ -54,14 +54,17 @@ defmodule NexusWeb.Layouts do
   attr :project_role, :atom, default: nil
   attr :sidebar_folders, :list, default: []
   attr :sidebar_pages, :list, default: []
+  attr :page_titles, :map, default: %{}
   attr :breadcrumbs, :list, default: []
-  attr :active_path, :string, default: nil
+  attr :active_page_id, :string, default: nil
   attr :creating_content_type, :atom, default: nil
 
   slot :inner_block, required: true
 
   def project(assigns) do
-    tree_items = build_tree_items(assigns.sidebar_folders, assigns.sidebar_pages)
+    tree_items =
+      build_tree_items(assigns.sidebar_folders, assigns.sidebar_pages, assigns.page_titles)
+
     assigns = assign(assigns, :tree_items, tree_items)
 
     ~H"""
@@ -112,7 +115,7 @@ defmodule NexusWeb.Layouts do
                   :for={item <- @tree_items}
                   item={item}
                   project_slug={to_string(@project.slug)}
-                  active_path={@active_path}
+                  active_page_id={@active_page_id}
                 />
               <% end %>
               <.inline_create_input
@@ -220,7 +223,7 @@ defmodule NexusWeb.Layouts do
 
   attr :item, :map, required: true
   attr :project_slug, :string, required: true
-  attr :active_path, :string, default: nil
+  attr :active_page_id, :string, default: nil
 
   defp tree_item(assigns) do
     ~H"""
@@ -254,7 +257,7 @@ defmodule NexusWeb.Layouts do
               :for={child <- @item.children}
               item={child}
               project_slug={@project_slug}
-              active_path={@active_path}
+              active_page_id={@active_page_id}
             />
           </ul>
         </details>
@@ -274,14 +277,14 @@ defmodule NexusWeb.Layouts do
             navigate={~p"/admin/#{@project_slug}/pages/#{@item.data.id}/edit"}
             class={[
               "group",
-              if(@active_path == to_string(@item.data.full_path),
+              if(@active_page_id == @item.data.id,
                 do: "bg-primary/10 text-primary font-medium",
                 else: "text-base-content/60"
               )
             ]}
           >
             <.icon name="hero-document-text" class="size-4 shrink-0" />
-            <span class="truncate text-sm">{@item.data.slug}</span>
+            <span class="truncate text-sm">{@item[:title] || @item.data.slug}</span>
             <span :if={@item.data.status == :published} class="shrink-0">
               <span class="w-1.5 h-1.5 rounded-full bg-success inline-block"></span>
             </span>
@@ -299,7 +302,7 @@ defmodule NexusWeb.Layouts do
               :for={child <- @item.children}
               item={child}
               project_slug={@project_slug}
-              active_path={@active_path}
+              active_page_id={@active_page_id}
             />
           </ul>
         <% else %>
@@ -307,14 +310,14 @@ defmodule NexusWeb.Layouts do
             navigate={~p"/admin/#{@project_slug}/pages/#{@item.data.id}/edit"}
             class={[
               "group",
-              if(@active_path == to_string(@item.data.full_path),
+              if(@active_page_id == @item.data.id,
                 do: "bg-primary/10 text-primary font-medium",
                 else: "text-base-content/60"
               )
             ]}
           >
             <.icon name="hero-document-text" class="size-4 shrink-0" />
-            <span class="truncate text-sm">{@item.data.slug}</span>
+            <span class="truncate text-sm">{@item[:title] || @item.data.slug}</span>
             <span :if={@item.data.status == :published} class="shrink-0">
               <span class="w-1.5 h-1.5 rounded-full bg-success inline-block"></span>
             </span>
@@ -385,42 +388,47 @@ defmodule NexusWeb.Layouts do
   # Tree Data Builder
   # ──────────────────────────────────────────────
 
-  defp build_tree_items(folders, pages) do
+  defp build_tree_items(folders, pages, page_titles) do
     folder_by_parent = Enum.group_by(folders, & &1.parent_id)
     pages_by_folder = Enum.group_by(pages, & &1.folder_id)
     pages_by_parent = Enum.group_by(pages, & &1.parent_page_id)
 
-    # Build root-level items (folders and pages without parent), sorted by position
-    build_children_at_level(nil, folder_by_parent, pages_by_folder, pages_by_parent)
+    build_children_at_level(nil, folder_by_parent, pages_by_folder, pages_by_parent, page_titles)
   end
 
-  defp build_children_at_level(parent_id, folder_by_parent, pages_by_folder, pages_by_parent) do
-    # Get folders at this level
+  defp build_children_at_level(
+         parent_id,
+         folder_by_parent,
+         pages_by_folder,
+         pages_by_parent,
+         page_titles
+       ) do
     folder_items =
       Map.get(folder_by_parent, parent_id, [])
       |> Enum.map(fn folder ->
         children =
-          build_children_at_level(folder.id, folder_by_parent, pages_by_folder, pages_by_parent)
+          build_children_at_level(
+            folder.id,
+            folder_by_parent,
+            pages_by_folder,
+            pages_by_parent,
+            page_titles
+          )
 
         %{type: :folder, data: folder, children: children}
       end)
 
-    # Get pages at this level (no parent page)
-    page_items = build_page_tree(parent_id, nil, pages_by_folder, pages_by_parent)
+    page_items = build_page_tree(parent_id, nil, pages_by_folder, pages_by_parent, page_titles)
 
-    # Combine and sort by position
     (folder_items ++ page_items)
     |> Enum.sort_by(fn item -> item.data.position || 0 end)
   end
 
-  defp build_page_tree(folder_id, parent_page_id, pages_by_folder, pages_by_parent) do
-    # Get pages that match the folder and parent_page criteria
+  defp build_page_tree(folder_id, parent_page_id, pages_by_folder, pages_by_parent, page_titles) do
     pages =
       if parent_page_id do
-        # Getting sub-pages (pages with this parent_page_id)
         Map.get(pages_by_parent, parent_page_id, [])
       else
-        # Getting pages in a folder (or root) without a parent page
         Map.get(pages_by_folder, folder_id, [])
         |> Enum.filter(&is_nil(&1.parent_page_id))
       end
@@ -428,11 +436,13 @@ defmodule NexusWeb.Layouts do
     pages
     |> Enum.sort_by(&(&1.position || 0))
     |> Enum.map(fn page ->
-      sub_pages = build_page_tree(folder_id, page.id, pages_by_folder, pages_by_parent)
+      sub_pages =
+        build_page_tree(folder_id, page.id, pages_by_folder, pages_by_parent, page_titles)
 
       %{
         type: :page,
         data: page,
+        title: Map.get(page_titles, page.id, to_string(page.slug)),
         children: sub_pages
       }
     end)

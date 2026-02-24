@@ -4,12 +4,18 @@ defmodule Nexus.Content.Changes.CalculateFullPath do
   @impl true
   def change(changeset, _opts, _context) do
     Ash.Changeset.before_action(changeset, fn changeset ->
-      slug = Ash.Changeset.get_attribute(changeset, :slug)
+      slug =
+        changeset
+        |> Ash.Changeset.get_attribute(:slug)
+        |> to_string()
+        |> slugify()
+
+      changeset = Ash.Changeset.force_change_attribute(changeset, :slug, slug)
       parent_path = resolve_parent_path(changeset)
 
       full_path =
         case parent_path do
-          nil -> to_string(slug)
+          nil -> slug
           path -> "#{path}/#{slug}"
         end
 
@@ -17,60 +23,29 @@ defmodule Nexus.Content.Changes.CalculateFullPath do
     end)
   end
 
+  defp slugify(str) do
+    str
+    |> String.downcase()
+    |> String.replace(~r/[^\w\s-]/u, "")
+    |> String.replace(~r/[\s_]+/, "-")
+    |> String.replace(~r/-+/, "-")
+    |> String.trim("-")
+  end
+
   defp resolve_parent_path(changeset) do
-    resource = changeset.resource
+    case changeset.resource do
+      Nexus.Content.Page ->
+        parent_page_id = Ash.Changeset.get_attribute(changeset, :parent_page_id)
 
-    cond do
-      resource == Nexus.Content.Folder ->
-        resolve_folder_parent(changeset)
+        if parent_page_id do
+          case Ash.get(Nexus.Content.Page, parent_page_id, authorize?: false) do
+            {:ok, page} -> to_string(page.full_path)
+            _ -> nil
+          end
+        end
 
-      resource == Nexus.Content.Page ->
-        resolve_page_parent(changeset)
-
-      true ->
+      _other ->
         nil
-    end
-  end
-
-  defp resolve_folder_parent(changeset) do
-    parent_id = Ash.Changeset.get_attribute(changeset, :parent_id)
-
-    if parent_id do
-      case Ash.get(Nexus.Content.Folder, parent_id, authorize?: false) do
-        {:ok, parent} -> to_string(parent.full_path)
-        _ -> nil
-      end
-    end
-  end
-
-  defp resolve_page_parent(changeset) do
-    folder_id = Ash.Changeset.get_attribute(changeset, :folder_id)
-    parent_page_id = Ash.Changeset.get_attribute(changeset, :parent_page_id)
-
-    parts =
-      [
-        if(folder_id, do: get_folder_path(folder_id)),
-        if(parent_page_id, do: get_page_path(parent_page_id))
-      ]
-      |> Enum.reject(&is_nil/1)
-
-    case parts do
-      [] -> nil
-      paths -> Enum.join(paths, "/")
-    end
-  end
-
-  defp get_folder_path(folder_id) do
-    case Ash.get(Nexus.Content.Folder, folder_id, authorize?: false) do
-      {:ok, folder} -> to_string(folder.full_path)
-      _ -> nil
-    end
-  end
-
-  defp get_page_path(page_id) do
-    case Ash.get(Nexus.Content.Page, page_id, authorize?: false) do
-      {:ok, page} -> to_string(page.full_path)
-      _ -> nil
     end
   end
 end

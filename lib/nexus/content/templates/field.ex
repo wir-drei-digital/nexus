@@ -12,9 +12,18 @@ defmodule Nexus.Content.Templates.Field do
           label: String.t(),
           required: boolean(),
           default: any(),
-          constraints: map()
+          constraints: map(),
+          ai_refine: boolean()
         }
 
   @enforce_keys [:key, :type, :label]
-  defstruct [:key, :type, :label, required: false, default: nil, constraints: %{}]
+  defstruct [
+    :key,
+    :type,
+    :label,
+    required: false,
+    default: nil,
+    constraints: %{},
+    ai_refine: false
+  ]
 end
