@@ -72,7 +72,8 @@ defmodule Nexus.Content.Templates.Renderer do
   end
 
   defp render_field(%Field{key: key, type: :image}, value) when is_binary(value) do
-    if value != "" && safe_scheme?(value, @allowed_image_schemes) do
+    if value != "" &&
+         (safe_scheme?(value, @allowed_image_schemes) || String.starts_with?(value, "/media/")) do
       ~s(<section data-field="#{key}" data-type="image"><img src="#{escape(value)}" alt=""></section>)
     else
       ""

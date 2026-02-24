@@ -44,7 +44,9 @@ defmodule NexusWeb.PageLive.Edit do
          |> assign(:copy_source_locale, default_copy_source(project, locale))
          |> assign(:auto_translate, true)
          |> assign(:copying_content, false)
-         |> assign(:show_copy_confirm, false)}
+         |> assign(:show_copy_confirm, false)
+         |> assign(:show_media_picker, false)
+         |> assign(:media_picker_meta, %{})}
 
       {:error, _} ->
         {:ok,
@@ -418,6 +420,28 @@ defmodule NexusWeb.PageLive.Edit do
     end
   end
 
+  # Open media picker for a template image field
+  @impl true
+  def handle_event("open_media_picker", %{"field" => field_key}, socket) do
+    {:noreply,
+     socket
+     |> assign(:show_media_picker, true)
+     |> assign(:media_picker_meta, %{field_key: field_key})}
+  end
+
+  # Clear an image field value
+  @impl true
+  def handle_event("clear_image_field", %{"field" => field_key}, socket) do
+    template_data = Map.put(socket.assigns.template_data, field_key, "")
+    content_html = render_content_html(socket.assigns.template, template_data)
+
+    {:noreply,
+     socket
+     |> assign(:template_data, template_data)
+     |> assign(:content_html, content_html)
+     |> assign(:save_status, :unsaved)}
+  end
+
   @impl true
   def handle_event(event, params, socket)
       when event in ~w(reorder_tree_item start_creating_page start_creating_folder cancel_inline_create save_inline_content) do
@@ -562,6 +586,29 @@ defmodule NexusWeb.PageLive.Edit do
      |> then(&do_auto_save/1)}
   end
 
+  @impl true
+  def handle_info({:media_selected, media_item, %{field_key: field_key}}, socket) do
+    url = media_url(media_item, "large")
+    template_data = Map.put(socket.assigns.template_data, field_key, url)
+    content_html = render_content_html(socket.assigns.template, template_data)
+
+    {:noreply,
+     socket
+     |> assign(:show_media_picker, false)
+     |> assign(:media_picker_meta, %{})
+     |> assign(:template_data, template_data)
+     |> assign(:content_html, content_html)
+     |> assign(:save_status, :unsaved)}
+  end
+
+  @impl true
+  def handle_info({:close_media_picker}, socket) do
+    {:noreply,
+     socket
+     |> assign(:show_media_picker, false)
+     |> assign(:media_picker_meta, %{})}
+  end
+
   defp do_auto_save(socket) do
     user = socket.assigns.current_user
     page = socket.assigns.page
@@ -698,6 +745,16 @@ defmodule NexusWeb.PageLive.Edit do
 
   defp render_content_html(template, template_data) do
     Renderer.render(template.slug, template_data)
+  end
+
+  defp media_url(item, preferred_variant) do
+    path =
+      case Map.get(item.variants || %{}, preferred_variant) do
+        nil -> item.file_path
+        variant_path -> variant_path
+      end
+
+    Nexus.Media.Storage.url(path)
   end
 
   defp push_rich_text_content(socket, template, template_data) do
@@ -1178,6 +1235,15 @@ defmodule NexusWeb.PageLive.Edit do
         <div class="modal-backdrop" phx-click="cancel_copy"></div>
       </dialog>
     </Layouts.project>
+
+    <.live_component
+      :if={@show_media_picker}
+      module={NexusWeb.MediaLive.PickerComponent}
+      id="media-picker"
+      project={@project}
+      current_user={@current_user}
+      meta={@media_picker_meta}
+    />
     """
   end
 
@@ -1308,19 +1374,39 @@ defmodule NexusWeb.PageLive.Edit do
         {@field.label}
         <span :if={@field.required} class="text-error">*</span>
       </label>
-      <input
-        type="url"
-        value={@value || ""}
-        phx-debounce="300"
-        name={"field[#{@key}]"}
-        class="input input-bordered w-full"
-        placeholder="https://example.com/image.jpg"
-      />
-      <img
+      <div
         :if={@value && @value != ""}
-        src={@value}
-        class="mt-2 max-h-48 rounded-box object-cover"
-      />
+        class="relative group rounded-box overflow-hidden mb-2"
+      >
+        <img src={@value} class="max-h-48 rounded-box object-cover w-full" />
+        <div class="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center gap-2 transition-opacity">
+          <button
+            type="button"
+            phx-click="open_media_picker"
+            phx-value-field={@key}
+            class="btn btn-sm btn-ghost text-white"
+          >
+            Change
+          </button>
+          <button
+            type="button"
+            phx-click="clear_image_field"
+            phx-value-field={@key}
+            class="btn btn-sm btn-ghost text-white"
+          >
+            Remove
+          </button>
+        </div>
+      </div>
+      <button
+        :if={!@value || @value == ""}
+        type="button"
+        phx-click="open_media_picker"
+        phx-value-field={@key}
+        class="btn btn-outline btn-sm w-full"
+      >
+        <.icon name="hero-photo" class="size-4" /> Select image
+      </button>
     </div>
     """
   end
