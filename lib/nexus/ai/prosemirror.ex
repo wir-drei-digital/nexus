@@ -60,6 +60,23 @@ defmodule Nexus.AI.ProseMirror do
   def to_plain_text(_), do: ""
 
   @doc """
+  Converts a ProseMirror JSON document to a Markdown string.
+  Used for feeding rich text content to LLMs for translation.
+  """
+  @spec to_markdown(map() | nil) :: String.t()
+  def to_markdown(nil), do: ""
+
+  def to_markdown(%{"type" => "doc", "content" => content}) when is_list(content) do
+    content
+    |> Enum.map(&node_to_markdown/1)
+    |> Enum.reject(&(&1 == ""))
+    |> Enum.join("\n\n")
+  end
+
+  def to_markdown(%{"type" => "doc"}), do: ""
+  def to_markdown(_), do: ""
+
+  @doc """
   Extracts plain text from a ProseMirror JSON document, a JSON-encoded string,
   or a template_data map (extracting text from all rich text fields).
   """
@@ -339,6 +356,126 @@ defmodule Nexus.AI.ProseMirror do
   end
 
   defp node_to_plain_text(_), do: ""
+
+  # ---------------------------------------------------------------------------
+  # ProseMirror JSON → Markdown
+  # ---------------------------------------------------------------------------
+
+  defp node_to_markdown(%{"type" => "paragraph", "content" => content}) do
+    inline_to_markdown(content)
+  end
+
+  defp node_to_markdown(%{"type" => "paragraph"}), do: ""
+
+  defp node_to_markdown(%{
+         "type" => "heading",
+         "attrs" => %{"level" => level},
+         "content" => content
+       }) do
+    prefix = String.duplicate("#", level)
+    "#{prefix} #{inline_to_markdown(content)}"
+  end
+
+  defp node_to_markdown(%{"type" => "heading"}), do: ""
+
+  defp node_to_markdown(%{
+         "type" => "codeBlock",
+         "attrs" => %{"language" => lang},
+         "content" => [%{"text" => text}]
+       })
+       when is_binary(lang) and lang != "" do
+    "```#{lang}\n#{text}\n```"
+  end
+
+  defp node_to_markdown(%{"type" => "codeBlock", "content" => [%{"text" => text}]}) do
+    "```\n#{text}\n```"
+  end
+
+  defp node_to_markdown(%{"type" => "codeBlock"}) do
+    "```\n\n```"
+  end
+
+  defp node_to_markdown(%{"type" => "blockquote", "content" => content}) do
+    content
+    |> Enum.map(fn node ->
+      node
+      |> node_to_markdown()
+      |> String.split("\n")
+      |> Enum.map_join("\n", &"> #{&1}")
+    end)
+    |> Enum.join("\n>\n")
+  end
+
+  defp node_to_markdown(%{"type" => "bulletList", "content" => items}) do
+    items
+    |> Enum.map(fn item -> "- #{list_item_to_markdown(item)}" end)
+    |> Enum.join("\n")
+  end
+
+  defp node_to_markdown(%{"type" => "orderedList", "content" => items}) do
+    items
+    |> Enum.with_index(1)
+    |> Enum.map(fn {item, idx} -> "#{idx}. #{list_item_to_markdown(item)}" end)
+    |> Enum.join("\n")
+  end
+
+  defp node_to_markdown(%{"type" => "horizontalRule"}), do: "---"
+
+  defp node_to_markdown(%{"type" => "image", "attrs" => attrs}) do
+    alt = attrs["alt"] || ""
+    src = attrs["src"] || ""
+    "![#{alt}](#{src})"
+  end
+
+  defp node_to_markdown(_), do: ""
+
+  defp list_item_to_markdown(%{"type" => "listItem", "content" => content}) do
+    content
+    |> Enum.map(&node_to_markdown/1)
+    |> Enum.reject(&(&1 == ""))
+    |> Enum.join("\n")
+  end
+
+  defp list_item_to_markdown(_), do: ""
+
+  defp inline_to_markdown(nodes) when is_list(nodes) do
+    Enum.map_join(nodes, "", &inline_node_to_markdown/1)
+  end
+
+  defp inline_node_to_markdown(%{"type" => "text", "text" => text, "marks" => marks})
+       when is_list(marks) do
+    wrap_with_marks(text, marks)
+  end
+
+  defp inline_node_to_markdown(%{"type" => "text", "text" => text}), do: text
+
+  defp inline_node_to_markdown(%{"type" => "hardBreak"}), do: "\n"
+
+  defp inline_node_to_markdown(_), do: ""
+
+  defp wrap_with_marks(text, []), do: text
+
+  defp wrap_with_marks(text, [%{"type" => "link", "attrs" => %{"href" => href}} | rest]) do
+    wrap_with_marks("[#{text}](#{href})", rest)
+  end
+
+  defp wrap_with_marks(text, [%{"type" => "bold"} | rest]) do
+    wrap_with_marks("**#{text}**", rest)
+  end
+
+  defp wrap_with_marks(text, [%{"type" => "italic"} | rest]) do
+    wrap_with_marks("*#{text}*", rest)
+  end
+
+  defp wrap_with_marks(text, [%{"type" => "strike"} | rest]) do
+    wrap_with_marks("~~#{text}~~", rest)
+  end
+
+  defp wrap_with_marks(text, [%{"type" => "code"} | rest]) do
+    wrap_with_marks("`#{text}`", rest)
+  end
+
+  defp wrap_with_marks(text, [_ | rest]), do: wrap_with_marks(text, rest)
 
   defp extract_inline_text(nodes) when is_list(nodes) do
     Enum.map_join(nodes, "", fn
