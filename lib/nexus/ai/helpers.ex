@@ -57,9 +57,16 @@ defmodule Nexus.AI.Helpers do
   @doc """
   Translates content fields from one locale to another using an LLM.
 
-  Prepares content (converting rich_text to markdown), calls the LLM,
-  then converts results back to their original formats.
+  Expects only translatable fields in `content` (pre-filtered via `classify_fields/2`).
+  The `field_types` map is used to determine format conversion:
+  - `:rich_text` fields are converted to/from markdown for LLM processing
+  - `:text` and `:textarea` fields are passed as plain strings
   """
+  def translate_content_impl(content, _source_locale, _target_locale, _field_types)
+      when content == %{} do
+    {:ok, %{}}
+  end
+
   def translate_content_impl(content, source_locale, target_locale, field_types) do
     prepared = prepare_translation_content(content, field_types)
 
@@ -79,12 +86,13 @@ defmodule Nexus.AI.Helpers do
 
     schema =
       Enum.map(prepared, fn {key, _} ->
-        {String.to_atom(key), [type: :string, required: true]}
+        {String.to_existing_atom(key), [type: :string, required: true]}
       end)
 
     case ReqLLM.generate_object(@model, prompt_messages, schema) do
       {:ok, response} ->
         translated = ReqLLM.Response.object(response)
+        # ReqLLM returns atom keys from the schema; normalize back to strings
         translated = Map.new(translated, fn {k, v} -> {to_string(k), v} end)
         {:ok, apply_translation_results(translated, field_types)}
 
