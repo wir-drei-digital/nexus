@@ -12,7 +12,7 @@ config :ash_oban, pro?: false
 config :nexus, Oban,
   engine: Oban.Engines.Basic,
   notifier: Oban.Notifiers.Postgres,
-  queues: [default: 10],
+  queues: [default: 10, media_processing: 5],
   repo: Nexus.Repo,
   plugins: [{Oban.Plugins.Cron, []}]
 

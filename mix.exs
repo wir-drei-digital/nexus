@@ -87,7 +87,10 @@ defmodule Nexus.MixProject do
       {:tidewave, "~> 0.5", only: [:dev]},
       {:tiptap_phoenix, github: "wir-drei-digital/tiptap-phoenix"},
       {:req_llm, "~> 1.6"},
-      {:mdex, "~> 0.6"}
+      {:mdex, "~> 0.6"},
+      {:image, "~> 0.54"},
+      {:ex_aws, "~> 2.0"},
+      {:ex_aws_s3, "~> 2.0"}
     ]
   end
 
