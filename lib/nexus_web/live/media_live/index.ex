@@ -42,6 +42,11 @@ defmodule NexusWeb.MediaLive.Index do
   end
 
   @impl true
+  def handle_event("cancel-upload", %{"ref" => ref}, socket) do
+    {:noreply, cancel_upload(socket, :media_uploads, ref)}
+  end
+
+  @impl true
   def handle_event("save_uploads", _params, socket) do
     project = socket.assigns.project
     user = socket.assigns.current_user
@@ -144,15 +149,7 @@ defmodule NexusWeb.MediaLive.Index do
     user = socket.assigns.current_user
 
     if item do
-      # Delete variant files
-      for {_name, variant_path} <- item.variants || %{} do
-        Storage.delete(variant_path)
-      end
-
-      # Delete original file
-      Storage.delete(item.file_path)
-
-      # Destroy the record
+      # Destroy the record (Ash change handles file deletion)
       case MediaItem.destroy(item, actor: user) do
         :ok ->
           items = Enum.reject(socket.assigns.items, &(&1.id == id))

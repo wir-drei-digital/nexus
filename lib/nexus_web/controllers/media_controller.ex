@@ -8,7 +8,7 @@ defmodule NexusWeb.MediaController do
 
     case Storage.get(relative_path) do
       {:ok, content} ->
-        content_type = Storage.mime_type_from_path(relative_path)
+        content_type = Storage.mime_type_from_path(relative_path) || "application/octet-stream"
 
         conn
         |> put_resp_header("content-type", content_type)

@@ -16,7 +16,6 @@ kill_signal = 'SIGTERM'
   AWS_BUCKET = 'nexus.wirdrei.digital'
   AWS_REGION = 'auto'
   AWS_S3_HOST = 't3.storage.dev'
-  NORTHFLANK_PROJECT_ID = 'magus'
   PHX_HOST = 'cms.wirdrei.digital'
   PORT = '8080'
 

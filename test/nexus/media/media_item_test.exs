@@ -68,12 +68,16 @@ defmodule Nexus.Media.MediaItemTest do
       variants = %{"thumb" => "#{project.id}/thumb.jpg", "medium" => "#{project.id}/medium.jpg"}
 
       updated =
-        Nexus.Media.MediaItem.update_status!(item, %{
-          status: :ready,
-          width: 1920,
-          height: 1080,
-          variants: variants
-        })
+        Nexus.Media.MediaItem.update_status!(
+          item,
+          %{
+            status: :ready,
+            width: 1920,
+            height: 1080,
+            variants: variants
+          },
+          authorize?: false
+        )
 
       assert updated.status == :ready
       assert updated.width == 1920
@@ -104,10 +108,14 @@ defmodule Nexus.Media.MediaItemTest do
       item = create_media_item(project, user, %{file_path: path})
 
       item =
-        Nexus.Media.MediaItem.update_status!(item, %{
-          status: :ready,
-          variants: %{"thumb" => thumb_path}
-        })
+        Nexus.Media.MediaItem.update_status!(
+          item,
+          %{
+            status: :ready,
+            variants: %{"thumb" => thumb_path}
+          },
+          authorize?: false
+        )
 
       # Store the variant too
       {:ok, _} = Storage.store(item.variants["thumb"], "fake thumb")

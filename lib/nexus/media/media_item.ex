@@ -94,7 +94,7 @@ defmodule Nexus.Media.MediaItem do
     end
 
     policy action(:update_status) do
-      authorize_if always()
+      forbid_if always()
     end
 
     policy action_type(:destroy) do

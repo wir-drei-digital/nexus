@@ -34,11 +34,17 @@ defmodule NexusWeb.MediaLive.PickerComponent do
       |> assign_new(:items, fn ->
         load_items(assigns.project.id, assigns.current_user)
       end)
-      |> allow_upload(:picker_uploads,
-        accept: ~w(.jpg .jpeg .png .gif .webp .svg),
-        max_entries: 5,
-        max_file_size: 20_000_000
-      )
+
+    socket =
+      if socket.assigns[:uploads] && socket.assigns.uploads[:picker_uploads] do
+        socket
+      else
+        allow_upload(socket, :picker_uploads,
+          accept: ~w(.jpg .jpeg .png .gif .webp .svg),
+          max_entries: 5,
+          max_file_size: 20_000_000
+        )
+      end
 
     {:ok, socket}
   end
@@ -48,6 +54,11 @@ defmodule NexusWeb.MediaLive.PickerComponent do
   @impl true
   def handle_event("validate_picker_uploads", _params, socket) do
     {:noreply, socket}
+  end
+
+  @impl true
+  def handle_event("cancel-upload", %{"ref" => ref}, socket) do
+    {:noreply, cancel_upload(socket, :picker_uploads, ref)}
   end
 
   @impl true
