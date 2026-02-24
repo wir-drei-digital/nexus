@@ -81,17 +81,7 @@ defmodule NexusWeb.PageLive.Edit do
     version = load_current_version(page, locale)
     template_data = extract_template_data(version, template)
 
-    # Push content to each rich_text editor
-    socket =
-      Enum.reduce(Template.all_fields(template), socket, fn field, sock ->
-        if field.type == :rich_text do
-          key = Atom.to_string(field.key)
-          content = Map.get(template_data, key, Template.default_data(template)[key])
-          push_event(sock, "tiptap:set_content:#{key}", %{content: content})
-        else
-          sock
-        end
-      end)
+    socket = push_rich_text_content(socket, template, template_data)
 
     {:noreply,
      socket
@@ -104,7 +94,8 @@ defmodule NexusWeb.PageLive.Edit do
      |> assign(:meta_keywords, (version && Enum.join(version.meta_keywords, ", ")) || "")
      |> assign(:save_status, if(version, do: :saved, else: :unsaved))
      |> assign(:copy_source_locale, default_copy_source(socket.assigns.project, locale))
-     |> assign(:show_copy_confirm, false)}
+     |> assign(:show_copy_confirm, false)
+     |> assign(:copying_content, false)}
   end
 
   @impl true
@@ -305,19 +296,7 @@ defmodule NexusWeb.PageLive.Edit do
                 {key, Map.get(old_data, key) || Map.get(default_data, key)}
               end)
 
-            # Push new content to rich text editors
-            socket =
-              Enum.reduce(Template.all_fields(new_template), socket, fn field, sock ->
-                if field.type == :rich_text do
-                  key = Atom.to_string(field.key)
-
-                  push_event(sock, "tiptap:set_content:#{key}", %{
-                    content: Map.get(new_data, key)
-                  })
-                else
-                  sock
-                end
-              end)
+            socket = push_rich_text_content(socket, new_template, new_data)
 
             {:noreply,
              socket
@@ -538,16 +517,7 @@ defmodule NexusWeb.PageLive.Edit do
     new_title = translated["title"] || seo_data.title
     new_meta_desc = translated["meta_description"] || seo_data.meta_description
 
-    socket =
-      Enum.reduce(Template.all_fields(template), socket, fn field, sock ->
-        if field.type == :rich_text do
-          key = Atom.to_string(field.key)
-          content = Map.get(new_template_data, key, Template.default_data(template)[key])
-          push_event(sock, "tiptap:set_content:#{key}", %{content: content})
-        else
-          sock
-        end
-      end)
+    socket = push_rich_text_content(socket, template, new_template_data)
 
     ref = Process.send_after(self(), :auto_save_meta, 500)
 
@@ -730,6 +700,18 @@ defmodule NexusWeb.PageLive.Edit do
     Renderer.render(template.slug, template_data)
   end
 
+  defp push_rich_text_content(socket, template, template_data) do
+    Enum.reduce(Template.all_fields(template), socket, fn field, sock ->
+      if field.type == :rich_text do
+        key = Atom.to_string(field.key)
+        content = Map.get(template_data, key, Template.default_data(template)[key])
+        push_event(sock, "tiptap:set_content:#{key}", %{content: content})
+      else
+        sock
+      end
+    end)
+  end
+
   defp default_copy_source(project, current_locale) do
     if project.default_locale != current_locale do
       project.default_locale
@@ -777,10 +759,7 @@ defmodule NexusWeb.PageLive.Edit do
       seo_data = %{
         title: source_version.title || "",
         meta_description: source_version.meta_description || "",
-        og_title: source_version.og_title || "",
-        og_description: source_version.og_description || "",
-        meta_keywords: source_version.meta_keywords || [],
-        og_image_url: source_version.og_image_url || ""
+        meta_keywords: source_version.meta_keywords || []
       }
 
       if socket.assigns.auto_translate do
@@ -811,16 +790,12 @@ defmodule NexusWeb.PageLive.Edit do
 
     seo_translatable = %{
       "title" => seo_data.title,
-      "meta_description" => seo_data.meta_description,
-      "og_title" => seo_data.og_title,
-      "og_description" => seo_data.og_description
+      "meta_description" => seo_data.meta_description
     }
 
     seo_field_types = %{
       "title" => :text,
-      "meta_description" => :textarea,
-      "og_title" => :text,
-      "og_description" => :textarea
+      "meta_description" => :textarea
     }
 
     all_translatable = Map.merge(translatable_template, seo_translatable)
@@ -847,16 +822,7 @@ defmodule NexusWeb.PageLive.Edit do
   defp do_copy_without_translation(socket, source_template_data, seo_data, template) do
     socket = cancel_auto_save_timer(socket)
 
-    socket =
-      Enum.reduce(Template.all_fields(template), socket, fn field, sock ->
-        if field.type == :rich_text do
-          key = Atom.to_string(field.key)
-          content = Map.get(source_template_data, key, Template.default_data(template)[key])
-          push_event(sock, "tiptap:set_content:#{key}", %{content: content})
-        else
-          sock
-        end
-      end)
+    socket = push_rich_text_content(socket, template, source_template_data)
 
     ref = Process.send_after(self(), :auto_save_meta, 500)
 
@@ -1053,16 +1019,15 @@ defmodule NexusWeb.PageLive.Edit do
           </div>
 
           <%!-- Actions --%>
-          <div class="p-5 border-b border-base-200">
+          <div :if={length(@project.available_locales) > 1} class="p-5 border-b border-base-200">
             <h3 class="font-semibold text-sm mb-3 text-base-content/70 uppercase tracking-wide">
               Actions
             </h3>
             <div class="space-y-3">
-              <div>
+              <form phx-change="update_copy_source">
                 <span class="text-xs text-base-content/60 mb-1 block">Copy content from</span>
                 <select
                   name="copy_source_locale"
-                  phx-change="update_copy_source"
                   class="select select-sm select-bordered w-full"
                 >
                   <option
@@ -1074,7 +1039,7 @@ defmodule NexusWeb.PageLive.Edit do
                     {locale_display_name(loc)}
                   </option>
                 </select>
-              </div>
+              </form>
               <label class="flex items-center gap-2 cursor-pointer">
                 <input
                   type="checkbox"
