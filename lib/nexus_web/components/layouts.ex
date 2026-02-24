@@ -143,6 +143,11 @@ defmodule NexusWeb.Layouts do
         <%!-- Bottom nav --%>
         <nav class="border-t border-base-300 p-2 space-y-px">
           <.sidebar_nav_link
+            href={~p"/admin/#{@project.slug}/media"}
+            icon="hero-photo"
+            label="Media"
+          />
+          <.sidebar_nav_link
             href={~p"/admin/#{@project.slug}/members"}
             icon="hero-users"
             label="Members"

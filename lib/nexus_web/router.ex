@@ -51,6 +51,7 @@ defmodule NexusWeb.Router do
       live "/admin/:slug/api-keys", ProjectApiKeyLive.Index, :index
       live "/admin/:slug/pages/new", PageLive.New, :new
       live "/admin/:slug/pages/:id/edit", PageLive.Edit, :edit
+      live "/admin/:slug/media", MediaLive.Index, :index
       live "/admin/:slug/pages/:id/versions", PageLive.Versions, :index
     end
   end
