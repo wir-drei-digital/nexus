@@ -427,7 +427,43 @@ defmodule Nexus.AI.ProseMirror do
     "![#{alt}](#{src})"
   end
 
+  defp node_to_markdown(%{
+         "type" => "taskItem",
+         "attrs" => %{"checked" => true},
+         "content" => content
+       }) do
+    text = content |> Enum.map(&node_to_markdown/1) |> Enum.reject(&(&1 == "")) |> Enum.join("\n")
+    "- [x] #{text}"
+  end
+
+  defp node_to_markdown(%{"type" => "taskItem", "content" => content}) do
+    text = content |> Enum.map(&node_to_markdown/1) |> Enum.reject(&(&1 == "")) |> Enum.join("\n")
+    "- [ ] #{text}"
+  end
+
+  defp node_to_markdown(%{"type" => "table", "content" => rows}) do
+    rows
+    |> Enum.with_index()
+    |> Enum.map_join("\n", fn {%{"content" => cells}, idx} ->
+      row = cells |> Enum.map_join(" | ", &table_cell_to_markdown/1)
+      line = "| #{row} |"
+
+      if idx == 0 do
+        separator = cells |> Enum.map_join(" | ", fn _ -> "---" end)
+        "#{line}\n| #{separator} |"
+      else
+        line
+      end
+    end)
+  end
+
   defp node_to_markdown(_), do: ""
+
+  defp table_cell_to_markdown(%{"content" => content}) do
+    content |> Enum.map(&node_to_markdown/1) |> Enum.join(" ") |> String.trim()
+  end
+
+  defp table_cell_to_markdown(_), do: ""
 
   defp list_item_to_markdown(%{"type" => "listItem", "content" => content}) do
     content
@@ -449,7 +485,7 @@ defmodule Nexus.AI.ProseMirror do
 
   defp inline_node_to_markdown(%{"type" => "text", "text" => text}), do: text
 
-  defp inline_node_to_markdown(%{"type" => "hardBreak"}), do: "\n"
+  defp inline_node_to_markdown(%{"type" => "hardBreak"}), do: "  \n"
 
   defp inline_node_to_markdown(_), do: ""
 

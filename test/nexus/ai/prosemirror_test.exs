@@ -398,7 +398,7 @@ defmodule Nexus.AI.ProseMirrorTest do
       assert ProseMirror.to_markdown(doc) == "![](https://example.com/photo.jpg)"
     end
 
-    test "converts hard break" do
+    test "converts hard break with two trailing spaces" do
       doc = %{
         "type" => "doc",
         "content" => [
@@ -413,7 +413,7 @@ defmodule Nexus.AI.ProseMirrorTest do
         ]
       }
 
-      assert ProseMirror.to_markdown(doc) == "Line one\nLine two"
+      assert ProseMirror.to_markdown(doc) == "Line one  \nLine two"
     end
 
     test "ignores unknown node types" do
@@ -452,6 +452,112 @@ defmodule Nexus.AI.ProseMirrorTest do
       }
 
       assert ProseMirror.to_markdown(doc) == "[**click here**](https://example.com)"
+    end
+
+    test "converts unchecked task item" do
+      doc = %{
+        "type" => "doc",
+        "content" => [
+          %{
+            "type" => "taskItem",
+            "attrs" => %{"checked" => false},
+            "content" => [
+              %{
+                "type" => "paragraph",
+                "content" => [%{"type" => "text", "text" => "Buy groceries"}]
+              }
+            ]
+          }
+        ]
+      }
+
+      assert ProseMirror.to_markdown(doc) == "- [ ] Buy groceries"
+    end
+
+    test "converts checked task item" do
+      doc = %{
+        "type" => "doc",
+        "content" => [
+          %{
+            "type" => "taskItem",
+            "attrs" => %{"checked" => true},
+            "content" => [
+              %{
+                "type" => "paragraph",
+                "content" => [%{"type" => "text", "text" => "Done task"}]
+              }
+            ]
+          }
+        ]
+      }
+
+      assert ProseMirror.to_markdown(doc) == "- [x] Done task"
+    end
+
+    test "converts table with header and body rows" do
+      doc = %{
+        "type" => "doc",
+        "content" => [
+          %{
+            "type" => "table",
+            "content" => [
+              %{
+                "type" => "tableRow",
+                "content" => [
+                  %{
+                    "type" => "tableHeader",
+                    "attrs" => %{"colspan" => 1, "rowspan" => 1},
+                    "content" => [
+                      %{
+                        "type" => "paragraph",
+                        "content" => [%{"type" => "text", "text" => "Name"}]
+                      }
+                    ]
+                  },
+                  %{
+                    "type" => "tableHeader",
+                    "attrs" => %{"colspan" => 1, "rowspan" => 1},
+                    "content" => [
+                      %{
+                        "type" => "paragraph",
+                        "content" => [%{"type" => "text", "text" => "Age"}]
+                      }
+                    ]
+                  }
+                ]
+              },
+              %{
+                "type" => "tableRow",
+                "content" => [
+                  %{
+                    "type" => "tableCell",
+                    "attrs" => %{"colspan" => 1, "rowspan" => 1},
+                    "content" => [
+                      %{
+                        "type" => "paragraph",
+                        "content" => [%{"type" => "text", "text" => "Alice"}]
+                      }
+                    ]
+                  },
+                  %{
+                    "type" => "tableCell",
+                    "attrs" => %{"colspan" => 1, "rowspan" => 1},
+                    "content" => [
+                      %{
+                        "type" => "paragraph",
+                        "content" => [%{"type" => "text", "text" => "30"}]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+
+      expected = "| Name | Age |\n| --- | --- |\n| Alice | 30 |"
+      assert ProseMirror.to_markdown(doc) == expected
     end
 
     test "roundtrip: markdown -> prosemirror -> markdown preserves content" do
