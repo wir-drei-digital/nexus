@@ -33,6 +33,12 @@ defmodule NexusWeb.Router do
     plug NexusWeb.Plugs.ProjectApiKeyAuth
   end
 
+  # Public media proxy — no auth required
+  scope "/media", NexusWeb do
+    pipe_through []
+    get "/*path", MediaController, :show
+  end
+
   scope "/", NexusWeb do
     pipe_through :browser
 
