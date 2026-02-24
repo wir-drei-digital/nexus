@@ -4,6 +4,8 @@ config :nexus, token_signing_secret: "3IzOsq7xZHSlBloPR+ku1Ky4s1TA8OrD"
 config :bcrypt_elixir, log_rounds: 1
 config :ash, policies: [show_policy_breakdowns?: true], disable_async?: true
 
+config :nexus, :storage_backend, :local
+
 # Configure your database
 #
 # The MIX_TEST_PARTITION environment variable can be used

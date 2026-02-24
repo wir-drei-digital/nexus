@@ -71,6 +71,8 @@ config :nexus, NexusWeb.Endpoint,
 # Enable dev routes for dashboard and mailbox
 config :nexus, dev_routes: true, token_signing_secret: "YQBt2qyx8uG7Vglq62TTR2M9BIFJ8/nv"
 
+config :nexus, :storage_backend, :local
+
 # Do not include metadata nor timestamps in development logs
 config :logger, :default_formatter, format: "[$level] $message\n"
 

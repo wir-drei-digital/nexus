@@ -76,6 +76,20 @@ if config_env() == :prod do
       System.get_env("TOKEN_SIGNING_SECRET") ||
         raise("Missing environment variable `TOKEN_SIGNING_SECRET`!")
 
+  # Media storage
+  config :nexus, :storage_backend, if(System.get_env("AWS_BUCKET"), do: :s3, else: :local)
+
+  if bucket = System.get_env("AWS_BUCKET") do
+    config :nexus, :s3,
+      access_key_id: System.get_env("AWS_ACCESS_KEY_ID"),
+      secret_access_key: System.get_env("AWS_SECRET_ACCESS_KEY"),
+      region: System.get_env("AWS_REGION", "auto"),
+      bucket: bucket,
+      host: System.get_env("AWS_S3_HOST"),
+      scheme: "https://",
+      prefix: "media"
+  end
+
   # ## SSL Support
   #
   # To get SSL working, you will need to add the `https` key

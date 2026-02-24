@@ -112,7 +112,8 @@ defmodule Nexus.Media.Storage do
   end
 
   @backend_modules %{
-    local: Nexus.Media.Storage.Local
+    local: Nexus.Media.Storage.Local,
+    s3: Nexus.Media.Storage.S3
   }
 
   defp backend_module do
