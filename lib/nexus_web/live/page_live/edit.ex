@@ -46,7 +46,12 @@ defmodule NexusWeb.PageLive.Edit do
          |> assign(:copying_content, false)
          |> assign(:show_copy_confirm, false)
          |> assign(:show_media_picker, false)
-         |> assign(:media_picker_meta, %{})}
+         |> assign(:media_picker_meta, %{})
+         |> allow_upload(:editor_media_upload,
+           accept: ~w(.jpg .jpeg .png .gif .webp .svg),
+           max_entries: 1,
+           max_file_size: 20_000_000
+         )}
 
       {:error, _} ->
         {:ok,
@@ -429,6 +434,75 @@ defmodule NexusWeb.PageLive.Edit do
      |> assign(:media_picker_meta, %{field_key: field_key})}
   end
 
+  # Open media picker for inserting an image into a tiptap editor
+  @impl true
+  def handle_event("open_media_picker_for_editor", %{"key" => editor_key}, socket) do
+    {:noreply,
+     socket
+     |> assign(:show_media_picker, true)
+     |> assign(:media_picker_meta, %{editor_key: editor_key})}
+  end
+
+  # Validate editor drag-drop upload (no-op, required by LiveView uploads)
+  @impl true
+  def handle_event("validate_editor_upload", _params, socket) do
+    {:noreply, socket}
+  end
+
+  # Handle drag-drop upload completion from the editor
+  @impl true
+  def handle_event("save_editor_upload", %{"key" => editor_key}, socket) do
+    project = socket.assigns.project
+    user = socket.assigns.current_user
+
+    uploaded =
+      consume_uploaded_entries(socket, :editor_media_upload, fn %{path: path}, entry ->
+        content = File.read!(path)
+        item_id = Ash.UUID.generate()
+        storage_path = Nexus.Media.Storage.generate_path(project.id, item_id, entry.client_name)
+
+        mime_type =
+          Nexus.Media.Storage.mime_type_from_path(entry.client_name) || "application/octet-stream"
+
+        case Nexus.Media.Storage.store(storage_path, content) do
+          {:ok, _} ->
+            item =
+              Nexus.Media.MediaItem.create!(
+                %{
+                  filename: entry.client_name,
+                  file_path: storage_path,
+                  mime_type: mime_type,
+                  file_size: byte_size(content),
+                  storage_backend: to_string(Nexus.Media.Storage.backend()),
+                  project_id: project.id,
+                  uploaded_by_id: user.id
+                },
+                actor: user
+              )
+
+            Nexus.Media.Processor.enqueue(item)
+            {:ok, item}
+
+          {:error, reason} ->
+            {:postpone, reason}
+        end
+      end)
+
+    case uploaded do
+      [%Nexus.Media.MediaItem{} = item | _] ->
+        url = media_url(item, "medium")
+
+        {:noreply,
+         push_event(socket, "tiptap:insert_image:#{editor_key}", %{
+           src: url,
+           alt: item.alt_text || item.filename
+         })}
+
+      _ ->
+        {:noreply, socket}
+    end
+  end
+
   # Clear an image field value
   @impl true
   def handle_event("clear_image_field", %{"field" => field_key}, socket) do
@@ -599,6 +673,20 @@ defmodule NexusWeb.PageLive.Edit do
      |> assign(:template_data, template_data)
      |> assign(:content_html, content_html)
      |> assign(:save_status, :unsaved)}
+  end
+
+  @impl true
+  def handle_info({:media_selected, media_item, %{editor_key: editor_key}}, socket) do
+    url = media_url(media_item, "medium")
+
+    {:noreply,
+     socket
+     |> assign(:show_media_picker, false)
+     |> assign(:media_picker_meta, %{})
+     |> push_event("tiptap:insert_image:#{editor_key}", %{
+       src: url,
+       alt: media_item.alt_text || ""
+     })}
   end
 
   @impl true
@@ -1236,6 +1324,16 @@ defmodule NexusWeb.PageLive.Edit do
       </dialog>
     </Layouts.project>
 
+    <%!-- Hidden form for editor drag-and-drop image uploads --%>
+    <form
+      id="editor-upload-form"
+      phx-change="validate_editor_upload"
+      phx-submit="save_editor_upload"
+      class="hidden"
+    >
+      <.live_file_input upload={@uploads.editor_media_upload} />
+    </form>
+
     <.live_component
       :if={@show_media_picker}
       module={NexusWeb.MediaLive.PickerComponent}
@@ -1306,7 +1404,18 @@ defmodule NexusWeb.PageLive.Edit do
           {@field.label}
           <span :if={@field.required} class="text-error">*</span>
         </label>
-        <.refine_button :if={@field.ai_refine} key={@key} is_refining={@is_refining} />
+        <div class="flex items-center gap-1">
+          <button
+            type="button"
+            phx-click="open_media_picker_for_editor"
+            phx-value-key={@key}
+            class="btn btn-ghost btn-xs gap-1"
+            title="Insert image"
+          >
+            <.icon name="hero-photo" class="size-3.5" /> Image
+          </button>
+          <.refine_button :if={@field.ai_refine} key={@key} is_refining={@is_refining} />
+        </div>
       </div>
       <TiptapPhoenix.Component.tiptap_editor
         id={"tiptap-editor-#{@key}"}

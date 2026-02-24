@@ -27,7 +27,92 @@ import topbar from "../vendor/topbar"
 import ContentTreeSort from "./hooks/content_tree_sort"
 import { createTiptapHook } from "tiptap-phoenix"
 
-const TiptapEditor = createTiptapHook()
+// Create base tiptap hook and extend with image insertion + drag-drop upload
+const baseTiptapHook = createTiptapHook()
+
+const TiptapEditor = {
+  mounted() {
+    baseTiptapHook.mounted.call(this)
+
+    const sectionKey = this._sectionKey
+
+    // Listen for image insertion events pushed from the server
+    this.handleEvent(`tiptap:insert_image:${sectionKey}`, ({src, alt}) => {
+      if (this.editor) {
+        this.editor.chain().focus().setImage({src, alt: alt || ""}).run()
+      }
+    })
+
+    // Set up drag-and-drop image upload on the editor element
+    const editorEl = this.el.querySelector("[data-tiptap-editor]")
+    if (editorEl) {
+      this._handleDragOver = (e) => {
+        if (e.dataTransfer && e.dataTransfer.types.includes("Files")) {
+          e.preventDefault()
+          e.dataTransfer.dropEffect = "copy"
+          editorEl.classList.add("ring-2", "ring-primary/50")
+        }
+      }
+
+      this._handleDragLeave = (_e) => {
+        editorEl.classList.remove("ring-2", "ring-primary/50")
+      }
+
+      this._handleDrop = (e) => {
+        editorEl.classList.remove("ring-2", "ring-primary/50")
+
+        const files = e.dataTransfer && e.dataTransfer.files
+        if (!files || files.length === 0) return
+
+        // Only handle image files
+        const imageFile = Array.from(files).find(f => f.type.startsWith("image/"))
+        if (!imageFile) return
+
+        e.preventDefault()
+        e.stopPropagation()
+
+        // Find the hidden upload input and programmatically upload
+        const uploadForm = document.getElementById("editor-upload-form")
+        if (!uploadForm) return
+
+        const uploadInput = uploadForm.querySelector("input[type='file']")
+        if (!uploadInput) return
+
+        // Use the LiveView upload mechanism: create a DataTransfer, set the file,
+        // and dispatch an input change event
+        const dt = new DataTransfer()
+        dt.items.add(imageFile)
+        uploadInput.files = dt.files
+        uploadInput.dispatchEvent(new Event("input", { bubbles: true }))
+
+        // Store the editor key so the form submission knows which editor to target
+        uploadForm.dataset.editorKey = sectionKey
+
+        // Wait for LiveView to process the upload, then submit the form
+        // The upload progress needs a moment to register
+        setTimeout(() => {
+          this.pushEvent("save_editor_upload", { key: sectionKey })
+        }, 100)
+      }
+
+      editorEl.addEventListener("dragover", this._handleDragOver)
+      editorEl.addEventListener("dragleave", this._handleDragLeave)
+      editorEl.addEventListener("drop", this._handleDrop)
+    }
+  },
+
+  destroyed() {
+    // Clean up drag-drop listeners
+    const editorEl = this.el && this.el.querySelector("[data-tiptap-editor]")
+    if (editorEl) {
+      if (this._handleDragOver) editorEl.removeEventListener("dragover", this._handleDragOver)
+      if (this._handleDragLeave) editorEl.removeEventListener("dragleave", this._handleDragLeave)
+      if (this._handleDrop) editorEl.removeEventListener("drop", this._handleDrop)
+    }
+
+    baseTiptapHook.destroyed.call(this)
+  }
+}
 
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 const liveSocket = new LiveSocket("/live", Socket, {
@@ -40,6 +125,13 @@ const liveSocket = new LiveSocket("/live", Socket, {
 topbar.config({barColors: {0: "#29d"}, shadowColor: "rgba(0, 0, 0, .3)"})
 window.addEventListener("phx:page-loading-start", _info => topbar.show(300))
 window.addEventListener("phx:page-loading-stop", _info => topbar.hide())
+
+// Handle copy-to-clipboard events from the server
+window.addEventListener("phx:copy_to_clipboard", (e) => {
+  if (e.detail && e.detail.text) {
+    navigator.clipboard.writeText(e.detail.text)
+  }
+})
 
 // connect if there are any LiveViews on the page
 liveSocket.connect()
