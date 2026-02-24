@@ -40,7 +40,11 @@ defmodule NexusWeb.PageLive.Edit do
          |> assign(:auto_save_ref, nil)
          |> assign(:seo_generating, false)
          |> assign(:refining_keys, [])
-         |> assign(:refine_dialog, nil)}
+         |> assign(:refine_dialog, nil)
+         |> assign(:copy_source_locale, default_copy_source(project, locale))
+         |> assign(:auto_translate, true)
+         |> assign(:copying_content, false)
+         |> assign(:show_copy_confirm, false)}
 
       {:error, _} ->
         {:ok,
@@ -98,7 +102,9 @@ defmodule NexusWeb.PageLive.Edit do
      |> assign(:title, (version && version.title) || "")
      |> assign(:meta_description, (version && version.meta_description) || "")
      |> assign(:meta_keywords, (version && Enum.join(version.meta_keywords, ", ")) || "")
-     |> assign(:save_status, if(version, do: :saved, else: :unsaved))}
+     |> assign(:save_status, if(version, do: :saved, else: :unsaved))
+     |> assign(:copy_source_locale, default_copy_source(socket.assigns.project, locale))
+     |> assign(:show_copy_confirm, false)}
   end
 
   @impl true
@@ -328,6 +334,38 @@ defmodule NexusWeb.PageLive.Edit do
   end
 
   @impl true
+  def handle_event("update_copy_source", %{"copy_source_locale" => locale}, socket) do
+    {:noreply, assign(socket, :copy_source_locale, locale)}
+  end
+
+  @impl true
+  def handle_event("toggle_auto_translate", _params, socket) do
+    {:noreply, update(socket, :auto_translate, &(!&1))}
+  end
+
+  @impl true
+  def handle_event("copy_content", _params, socket) do
+    if socket.assigns.version != nil do
+      {:noreply, assign(socket, :show_copy_confirm, true)}
+    else
+      {:noreply, do_copy_content(socket)}
+    end
+  end
+
+  @impl true
+  def handle_event("confirm_copy_content", _params, socket) do
+    {:noreply,
+     socket
+     |> assign(:show_copy_confirm, false)
+     |> do_copy_content()}
+  end
+
+  @impl true
+  def handle_event("cancel_copy", _params, socket) do
+    {:noreply, assign(socket, :show_copy_confirm, false)}
+  end
+
+  @impl true
   def handle_event("tiptap:" <> _, _params, socket) do
     {:noreply, socket}
   end
@@ -488,6 +526,64 @@ defmodule NexusWeb.PageLive.Edit do
   end
 
   @impl true
+  def handle_async(:copy_translate, {:ok, {:ok, translated, direct_template, seo_data}}, socket) do
+    socket = cancel_auto_save_timer(socket)
+    template = socket.assigns.template
+
+    translated_template =
+      Map.take(translated, Enum.map(Template.all_fields(template), &Atom.to_string(&1.key)))
+
+    new_template_data = Map.merge(direct_template, translated_template)
+
+    new_title = translated["title"] || seo_data.title
+    new_meta_desc = translated["meta_description"] || seo_data.meta_description
+
+    socket =
+      Enum.reduce(Template.all_fields(template), socket, fn field, sock ->
+        if field.type == :rich_text do
+          key = Atom.to_string(field.key)
+          content = Map.get(new_template_data, key, Template.default_data(template)[key])
+          push_event(sock, "tiptap:set_content:#{key}", %{content: content})
+        else
+          sock
+        end
+      end)
+
+    ref = Process.send_after(self(), :auto_save_meta, 500)
+
+    {:noreply,
+     socket
+     |> assign(:copying_content, false)
+     |> assign(:template_data, new_template_data)
+     |> assign(:content_html, render_content_html(template, new_template_data))
+     |> assign(:title, new_title)
+     |> assign(:meta_description, new_meta_desc)
+     |> assign(:meta_keywords, Enum.join(seo_data.meta_keywords, ", "))
+     |> assign(:save_status, :unsaved)
+     |> assign(:auto_save_ref, ref)
+     |> put_flash(
+       :info,
+       "Content translated from #{String.upcase(socket.assigns.copy_source_locale)}"
+     )}
+  end
+
+  @impl true
+  def handle_async(:copy_translate, {:ok, {:error, reason}}, socket) do
+    {:noreply,
+     socket
+     |> assign(:copying_content, false)
+     |> put_flash(:error, "Translation failed: #{inspect(reason)}")}
+  end
+
+  @impl true
+  def handle_async(:copy_translate, {:exit, _reason}, socket) do
+    {:noreply,
+     socket
+     |> assign(:copying_content, false)
+     |> put_flash(:error, "Translation failed unexpectedly")}
+  end
+
+  @impl true
   def handle_info(:auto_save_meta, socket) do
     {:noreply,
      socket
@@ -632,6 +728,147 @@ defmodule NexusWeb.PageLive.Edit do
 
   defp render_content_html(template, template_data) do
     Renderer.render(template.slug, template_data)
+  end
+
+  defp default_copy_source(project, current_locale) do
+    if project.default_locale != current_locale do
+      project.default_locale
+    else
+      project.available_locales
+      |> Enum.find(&(&1 != current_locale))
+    end
+  end
+
+  defp locale_display_name(code) do
+    %{
+      "en" => "English",
+      "de" => "German",
+      "fr" => "French",
+      "es" => "Spanish",
+      "it" => "Italian",
+      "pt" => "Portuguese",
+      "nl" => "Dutch",
+      "pl" => "Polish",
+      "ru" => "Russian",
+      "zh" => "Chinese",
+      "ja" => "Japanese",
+      "ko" => "Korean",
+      "ar" => "Arabic"
+    }
+    |> Map.get(code, String.upcase(code))
+  end
+
+  defp do_copy_content(socket) do
+    source_locale = socket.assigns.copy_source_locale
+    page = socket.assigns.page
+    template = socket.assigns.template
+
+    source_version = load_current_version(page, source_locale)
+
+    if source_version == nil do
+      put_flash(socket, :error, "No content found for #{String.upcase(source_locale)}")
+    else
+      source_template_data = extract_template_data(source_version, template)
+
+      field_types =
+        Template.all_fields(template)
+        |> Map.new(fn field -> {Atom.to_string(field.key), field.type} end)
+
+      seo_data = %{
+        title: source_version.title || "",
+        meta_description: source_version.meta_description || "",
+        og_title: source_version.og_title || "",
+        og_description: source_version.og_description || "",
+        meta_keywords: source_version.meta_keywords || [],
+        og_image_url: source_version.og_image_url || ""
+      }
+
+      if socket.assigns.auto_translate do
+        do_copy_with_translation(
+          socket,
+          source_template_data,
+          seo_data,
+          field_types,
+          source_locale
+        )
+      else
+        do_copy_without_translation(socket, source_template_data, seo_data, template)
+      end
+    end
+  end
+
+  defp do_copy_with_translation(
+         socket,
+         source_template_data,
+         seo_data,
+         field_types,
+         source_locale
+       ) do
+    target_locale = socket.assigns.current_locale
+
+    {translatable_template, direct_template} =
+      Nexus.AI.Helpers.classify_fields(source_template_data, field_types)
+
+    seo_translatable = %{
+      "title" => seo_data.title,
+      "meta_description" => seo_data.meta_description,
+      "og_title" => seo_data.og_title,
+      "og_description" => seo_data.og_description
+    }
+
+    seo_field_types = %{
+      "title" => :text,
+      "meta_description" => :textarea,
+      "og_title" => :text,
+      "og_description" => :textarea
+    }
+
+    all_translatable = Map.merge(translatable_template, seo_translatable)
+    all_field_types = Map.merge(field_types, seo_field_types)
+
+    socket
+    |> assign(:copying_content, true)
+    |> start_async(:copy_translate, fn ->
+      case Nexus.AI.Helpers.translate_content_impl(
+             all_translatable,
+             source_locale,
+             target_locale,
+             all_field_types
+           ) do
+        {:ok, translated} ->
+          {:ok, translated, direct_template, seo_data}
+
+        {:error, reason} ->
+          {:error, reason}
+      end
+    end)
+  end
+
+  defp do_copy_without_translation(socket, source_template_data, seo_data, template) do
+    socket = cancel_auto_save_timer(socket)
+
+    socket =
+      Enum.reduce(Template.all_fields(template), socket, fn field, sock ->
+        if field.type == :rich_text do
+          key = Atom.to_string(field.key)
+          content = Map.get(source_template_data, key, Template.default_data(template)[key])
+          push_event(sock, "tiptap:set_content:#{key}", %{content: content})
+        else
+          sock
+        end
+      end)
+
+    ref = Process.send_after(self(), :auto_save_meta, 500)
+
+    socket
+    |> assign(:template_data, source_template_data)
+    |> assign(:content_html, render_content_html(template, source_template_data))
+    |> assign(:title, seo_data.title)
+    |> assign(:meta_description, seo_data.meta_description)
+    |> assign(:meta_keywords, Enum.join(seo_data.meta_keywords, ", "))
+    |> assign(:save_status, :unsaved)
+    |> assign(:auto_save_ref, ref)
+    |> put_flash(:info, "Content copied from #{String.upcase(socket.assigns.copy_source_locale)}")
   end
 
   defp coerce_value(nil, value), do: value
@@ -815,6 +1052,55 @@ defmodule NexusWeb.PageLive.Edit do
             </.form>
           </div>
 
+          <%!-- Actions --%>
+          <div class="p-5 border-b border-base-200">
+            <h3 class="font-semibold text-sm mb-3 text-base-content/70 uppercase tracking-wide">
+              Actions
+            </h3>
+            <div class="space-y-3">
+              <div>
+                <span class="text-xs text-base-content/60 mb-1 block">Copy content from</span>
+                <select
+                  name="copy_source_locale"
+                  phx-change="update_copy_source"
+                  class="select select-sm select-bordered w-full"
+                >
+                  <option
+                    :for={loc <- @project.available_locales}
+                    :if={loc != @current_locale}
+                    value={loc}
+                    selected={loc == @copy_source_locale}
+                  >
+                    {locale_display_name(loc)}
+                  </option>
+                </select>
+              </div>
+              <label class="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={@auto_translate}
+                  phx-click="toggle_auto_translate"
+                  class="checkbox checkbox-sm checkbox-primary"
+                />
+                <span class="text-sm text-base-content/70">Auto translate</span>
+              </label>
+              <.button
+                type="button"
+                phx-click="copy_content"
+                class="btn btn-sm w-full border border-base-content/20"
+                disabled={@copying_content || @copy_source_locale == nil}
+              >
+                <span :if={@copying_content} class="loading loading-spinner loading-xs"></span>
+                <.icon :if={!@copying_content} name="hero-document-duplicate-mini" class="size-4" />
+                {cond do
+                  @copying_content -> "Copying..."
+                  @auto_translate -> "Copy & Translate"
+                  true -> "Copy content"
+                end}
+              </.button>
+            </div>
+          </div>
+
           <%!-- Page Settings --%>
           <div class="p-5 border-b border-base-200">
             <h3 class="font-semibold text-sm mb-3 text-base-content/70 uppercase tracking-wide">
@@ -900,6 +1186,31 @@ defmodule NexusWeb.PageLive.Edit do
           </form>
         </div>
         <div class="modal-backdrop" phx-click="close_refine_dialog"></div>
+      </dialog>
+
+      <%!-- Confirm copy overwrite dialog --%>
+      <dialog
+        :if={@show_copy_confirm}
+        class="modal modal-open"
+        phx-window-keydown="cancel_copy"
+        phx-key="Escape"
+      >
+        <div class="modal-box max-w-sm">
+          <h3 class="font-bold text-lg">Overwrite content?</h3>
+          <p class="py-4 text-sm text-base-content/70">
+            This will overwrite existing content in <strong>{String.upcase(@current_locale)}</strong>.
+            Version history will preserve the current content.
+          </p>
+          <div class="modal-action">
+            <button type="button" phx-click="cancel_copy" class="btn btn-ghost btn-sm">
+              Cancel
+            </button>
+            <button type="button" phx-click="confirm_copy_content" class="btn btn-primary btn-sm">
+              Continue
+            </button>
+          </div>
+        </div>
+        <div class="modal-backdrop" phx-click="cancel_copy"></div>
       </dialog>
     </Layouts.project>
     """
