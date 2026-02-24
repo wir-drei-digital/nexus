@@ -63,4 +63,24 @@ defmodule Nexus.Fixtures do
 
     Nexus.Content.PageVersion.create!(params, actor: user)
   end
+
+  def create_media_item(project, user, attrs \\ %{}) do
+    item_id = Ash.UUID.generate()
+
+    params =
+      Map.merge(
+        %{
+          filename: "test-#{System.unique_integer([:positive])}.jpg",
+          file_path: "#{project.id}/#{item_id}.jpg",
+          mime_type: "image/jpeg",
+          file_size: 1024,
+          storage_backend: "local",
+          project_id: project.id,
+          uploaded_by_id: user.id
+        },
+        attrs
+      )
+
+    Nexus.Media.MediaItem.create!(params, actor: user)
+  end
 end
