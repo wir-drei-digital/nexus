@@ -18,6 +18,7 @@ defmodule Nexus.Content.Page do
     routes do
       base "/projects/:project_slug/pages"
       index :list_for_project_slug, primary?: true
+      get :read, route: "/:id"
 
       route :get, "/published", :get_published_content do
         query_params [:path, :locale]
@@ -75,16 +76,33 @@ defmodule Nexus.Content.Page do
 
     read :list_for_project_slug do
       argument :project_slug, :ci_string, allow_nil?: false
+      argument :folder, :string
 
       prepare build(load: [project: []])
 
       filter expr(project.slug == ^arg(:project_slug) and is_nil(deleted_at))
+
+      prepare fn query, _context ->
+        case Ash.Query.get_argument(query, :folder) do
+          nil ->
+            query
+
+          "" ->
+            query
+
+          folder_path ->
+            Ash.Query.filter(
+              query,
+              expr(fragment("? LIKE ? || '%'", full_path, ^folder_path))
+            )
+        end
+      end
     end
 
     action :get_published_content do
       argument :project_slug, :ci_string, allow_nil?: false
       argument :path, :string, allow_nil?: false
-      argument :locale, :string, allow_nil?: false
+      argument :locale, :string
 
       returns :map
 
@@ -136,6 +154,10 @@ defmodule Nexus.Content.Page do
   end
 
   policies do
+    policy action(:get_published_content) do
+      authorize_if always()
+    end
+
     policy action_type(:read) do
       authorize_if expr(exists(project.memberships, user_id == ^actor(:id)))
       authorize_if expr(project.is_public == true and status == :published)

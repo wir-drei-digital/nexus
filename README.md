@@ -9,6 +9,20 @@ Now you can visit [`localhost:4000`](http://localhost:4000) from your browser.
 
 Ready to run in production? Please [check our deployment guides](https://hexdocs.pm/phoenix/deployment.html).
 
+## Production Administration
+
+When running in production without Mix installed, you can use the following scripts from the release bin directory:
+
+### Adding Users
+
+To add a new user via SSH on the production server:
+
+```bash
+./add_user daniel@wirdrei.digital "ZUGWh7Ce^$Rm7^wSA3XnBx9*f9m"
+```
+
+This works because the release includes the `Nexus.Release.add_user/2` function that can be executed without Mix.
+
 ## Learn more
 
 * Official website: https://www.phoenixframework.org/

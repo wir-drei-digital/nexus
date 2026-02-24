@@ -3,15 +3,13 @@ defmodule Nexus.Content.Calculations.RenderedHtml do
   Calculation that renders template_data into HTML using the template renderer.
   """
 
-  require Ash.Query
+  use Ash.Resource.Calculation
 
   alias Nexus.Content.Templates.Renderer
 
-  def init(opts), do: {:ok, opts}
-
+  @impl true
   def calculate(records, _opts, _context) do
     Enum.map(records, fn record ->
-      # The :page relationship should be loaded by the `load/3` callback
       case record.page do
         nil -> nil
         page -> Renderer.render(page.template_slug, record.template_data)
@@ -19,6 +17,7 @@ defmodule Nexus.Content.Calculations.RenderedHtml do
     end)
   end
 
+  @impl true
   def load(_query, _opts, _context) do
     [:page]
   end

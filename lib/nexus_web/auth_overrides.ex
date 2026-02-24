@@ -1,20 +1,20 @@
 defmodule NexusWeb.AuthOverrides do
   use AshAuthentication.Phoenix.Overrides
 
-  # configure your UI overrides here
+  alias AshAuthentication.Phoenix.Components
 
-  # First argument to `override` is the component name you are overriding.
-  # The body contains any number of configurations you wish to override
-  # Below are some examples
+  # Show Nexus logo and branding instead of Ash logo
+  override Components.Banner do
+    set :href_url, "/admin"
+    set :root_class, "w-full flex justify-center py-4 border-b border-base-200"
+    set :image_url, nil
+    set :dark_image_url, nil
+    set :text_class, "flex items-center gap-2 text-lg font-medium"
+    set :text, "⟐ NEXUS"
+  end
 
-  # For a complete reference, see https://hexdocs.pm/ash_authentication_phoenix/ui-overrides.html
-
-  # override AshAuthentication.Phoenix.Components.Banner do
-  #   set :image_url, "https://media.giphy.com/media/g7GKcSzwQfugw/giphy.gif"
-  #   set :text_class, "bg-red-500"
-  # end
-
-  # override AshAuthentication.Phoenix.Components.SignIn do
-  #  set :show_banner, false
-  # end
+  # Disable registration
+  override Components.Password do
+    set :register_toggle_text, nil
+  end
 end

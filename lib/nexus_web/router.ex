@@ -57,8 +57,7 @@ defmodule NexusWeb.Router do
     sign_out_route AuthController
 
     # Remove these if you'd like to use your own authentication views
-    sign_in_route register_path: "/register",
-                  reset_path: "/reset",
+    sign_in_route reset_path: "/reset",
                   auth_routes_prefix: "/auth",
                   on_mount: [{NexusWeb.LiveUserAuth, :live_no_user}],
                   overrides: [
@@ -84,6 +83,11 @@ defmodule NexusWeb.Router do
       overrides: [NexusWeb.AuthOverrides, Elixir.AshAuthentication.Phoenix.Overrides.DaisyUI]
     )
   end
+
+  forward "/api/docs",
+          OpenApiSpex.Plug.SwaggerUI,
+          path: "/api/v1/open_api",
+          default_model_expand_depth: 4
 
   scope "/api/v1" do
     pipe_through :public_api

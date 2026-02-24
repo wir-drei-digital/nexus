@@ -6,20 +6,21 @@ defmodule Nexus.Content.Actions.GetPublishedContent do
   including rendered HTML from the template.
   """
 
-  require Ash.Query
+  use Ash.Resource.Actions.Implementation
 
   alias Nexus.Content.Templates.Renderer
 
+  @impl true
   def run(input, _opts, context) do
-    project_slug = Ash.Changeset.get_argument(input, :project_slug)
-    path = Ash.Changeset.get_argument(input, :path)
-    locale = Ash.Changeset.get_argument(input, :locale)
-    actor = context[:actor]
+    project_slug = Ash.ActionInput.get_argument(input, :project_slug)
+    path = Ash.ActionInput.get_argument(input, :path)
+    locale = Ash.ActionInput.get_argument(input, :locale)
+    actor = context.actor
 
     with {:ok, project} <- get_project(project_slug),
          {:ok, page} <- get_page(project, path, actor),
-         locale <- locale || project.default_locale,
-         {:ok, version} <- get_published_version(page, locale) do
+         effective_locale = locale || project.default_locale,
+         {:ok, version} <- get_published_version(page, effective_locale) do
       html_content = Renderer.render(page.template_slug, version.template_data)
 
       {:ok,

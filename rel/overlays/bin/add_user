@@ -1,0 +1,10 @@
+#!/bin/sh
+set -eu
+
+if [ $# -ne 2 ]; then
+  echo "Usage: $0 <email> <password>" >&2
+  exit 1
+fi
+
+cd -P -- "$(dirname -- "$0")"
+exec ./nexus eval "Nexus.Release.add_user(\"$1\", \"$2\")"

@@ -205,6 +205,7 @@ defmodule Nexus.Content.PageVersion do
   calculations do
     calculate :rendered_html, :string do
       calculation Nexus.Content.Calculations.RenderedHtml
+      public? true
     end
   end
 
