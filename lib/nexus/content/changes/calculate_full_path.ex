@@ -35,17 +35,46 @@ defmodule Nexus.Content.Changes.CalculateFullPath do
   defp resolve_parent_path(changeset) do
     case changeset.resource do
       Nexus.Content.Page ->
-        parent_page_id = Ash.Changeset.get_attribute(changeset, :parent_page_id)
+        resolve_page_parent_path(changeset)
 
-        if parent_page_id do
-          case Ash.get(Nexus.Content.Page, parent_page_id, authorize?: false) do
-            {:ok, page} -> to_string(page.full_path)
-            _ -> nil
-          end
-        end
+      Nexus.Content.Folder ->
+        resolve_folder_parent_path(changeset)
 
       _other ->
         nil
+    end
+  end
+
+  defp resolve_page_parent_path(changeset) do
+    folder_id = Ash.Changeset.get_attribute(changeset, :folder_id)
+    parent_page_id = Ash.Changeset.get_attribute(changeset, :parent_page_id)
+
+    cond do
+      parent_page_id ->
+        case Ash.get(Nexus.Content.Page, parent_page_id, authorize?: false) do
+          {:ok, page} -> to_string(page.full_path)
+          _ -> nil
+        end
+
+      folder_id ->
+        case Ash.get(Nexus.Content.Folder, folder_id, authorize?: false) do
+          {:ok, folder} -> to_string(folder.full_path)
+          _ -> nil
+        end
+
+      true ->
+        nil
+    end
+  end
+
+  defp resolve_folder_parent_path(changeset) do
+    parent_id = Ash.Changeset.get_attribute(changeset, :parent_id)
+
+    if parent_id do
+      case Ash.get(Nexus.Content.Folder, parent_id, authorize?: false) do
+        {:ok, folder} -> to_string(folder.full_path)
+        _ -> nil
+      end
     end
   end
 end
