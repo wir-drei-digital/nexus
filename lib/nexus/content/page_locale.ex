@@ -15,6 +15,7 @@ defmodule Nexus.Content.PageLocale do
     define :read
     define :for_page, args: [:page_id]
     define :publish_locale
+    define :mark_changed
     define :unpublish_locale
     define :destroy
   end
@@ -34,6 +35,12 @@ defmodule Nexus.Content.PageLocale do
 
     update :publish_locale do
       accept [:published_version_id]
+      change set_attribute(:has_unpublished_changes, false)
+    end
+
+    update :mark_changed do
+      accept []
+      change set_attribute(:has_unpublished_changes, true)
     end
 
     update :unpublish_locale do
@@ -67,6 +74,12 @@ defmodule Nexus.Content.PageLocale do
     uuid_primary_key :id
 
     attribute :locale, :string do
+      allow_nil? false
+      public? true
+    end
+
+    attribute :has_unpublished_changes, :boolean do
+      default false
       allow_nil? false
       public? true
     end
