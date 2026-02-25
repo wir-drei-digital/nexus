@@ -209,45 +209,50 @@ defmodule NexusWeb.PageLive.Edit do
     user = socket.assigns.current_user
     page = socket.assigns.page
     locale = socket.assigns.current_locale
-    keywords = parse_keywords(socket.assigns.meta_keywords)
-    content_html = render_content_html(socket.assigns.template, socket.assigns.template_data)
-
-    version_attrs = %{
-      page_id: page.id,
-      locale: locale,
-      title: socket.assigns.title,
-      meta_description: socket.assigns.meta_description,
-      meta_keywords: keywords,
-      template_data: socket.assigns.template_data,
-      content_html: content_html,
-      created_by_id: user.id
-    }
-
     page_locale = socket.assigns.locale_map[locale]
 
-    with {:locale, %{} = page_locale} <- {:locale, page_locale},
-         {:ok, published_version} <-
-           Nexus.Content.PageVersion.create(version_attrs, actor: user),
-         {:ok, _} <-
-           Ash.update(page_locale, %{published_version_id: published_version.id},
-             action: :publish_locale,
-             actor: user
-           ) do
-      locales = load_locales(page, user)
-      locale_map = Map.new(locales, &{&1.locale, &1})
-
-      {:noreply,
-       socket
-       |> assign(:locales, locales)
-       |> assign(:locale_map, locale_map)
-       |> assign(:save_status, :saved)
-       |> put_flash(:info, "Published v#{published_version.version_number}")}
-    else
-      {:locale, nil} ->
+    cond do
+      is_nil(page_locale) ->
         {:noreply, put_flash(socket, :error, "Save content first")}
 
-      {:error, _} ->
-        {:noreply, put_flash(socket, :error, "Failed to publish")}
+      page_locale.published_version_id && !page_locale.has_unpublished_changes ->
+        {:noreply, put_flash(socket, :info, "No changes to publish")}
+
+      true ->
+        keywords = parse_keywords(socket.assigns.meta_keywords)
+        content_html = render_content_html(socket.assigns.template, socket.assigns.template_data)
+
+        version_attrs = %{
+          page_id: page.id,
+          locale: locale,
+          title: socket.assigns.title,
+          meta_description: socket.assigns.meta_description,
+          meta_keywords: keywords,
+          template_data: socket.assigns.template_data,
+          content_html: content_html,
+          created_by_id: user.id
+        }
+
+        with {:ok, published_version} <-
+               Nexus.Content.PageVersion.create(version_attrs, actor: user),
+             {:ok, _} <-
+               Ash.update(page_locale, %{published_version_id: published_version.id},
+                 action: :publish_locale,
+                 actor: user
+               ) do
+          locales = load_locales(page, user)
+          locale_map = Map.new(locales, &{&1.locale, &1})
+
+          {:noreply,
+           socket
+           |> assign(:locales, locales)
+           |> assign(:locale_map, locale_map)
+           |> assign(:save_status, :saved)
+           |> put_flash(:info, "Published v#{published_version.version_number}")}
+        else
+          {:error, _} ->
+            {:noreply, put_flash(socket, :error, "Failed to publish")}
+        end
     end
   end
 
