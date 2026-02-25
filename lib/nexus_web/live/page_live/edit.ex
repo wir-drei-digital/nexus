@@ -181,73 +181,72 @@ defmodule NexusWeb.PageLive.Edit do
   end
 
   @impl true
-  def handle_event("save_version", _params, socket) do
+  def handle_event("publish", _params, socket) do
     user = socket.assigns.current_user
     page = socket.assigns.page
     locale = socket.assigns.current_locale
-
     keywords = parse_keywords(socket.assigns.meta_keywords)
     content_html = render_content_html(socket.assigns.template, socket.assigns.template_data)
 
-    case Nexus.Content.PageVersion.create(
-           %{
-             page_id: page.id,
-             locale: locale,
-             title: socket.assigns.title,
-             meta_description: socket.assigns.meta_description,
-             meta_keywords: keywords,
-             template_data: socket.assigns.template_data,
-             content_html: content_html,
-             created_by_id: user.id
-           },
-           actor: user
-         ) do
-      {:ok, version} ->
-        {:noreply,
-         socket
-         |> assign(:version, version)
-         |> assign(:save_status, :saved)
-         |> put_flash(:info, "Version #{version.version_number} saved")}
+    version_attrs = %{
+      page_id: page.id,
+      locale: locale,
+      title: socket.assigns.title,
+      meta_description: socket.assigns.meta_description,
+      meta_keywords: keywords,
+      template_data: socket.assigns.template_data,
+      content_html: content_html,
+      created_by_id: user.id
+    }
+
+    page_locale = socket.assigns.locale_map[locale]
+
+    with {:locale, %{} = page_locale} <- {:locale, page_locale},
+         {:ok, published_version} <-
+           Nexus.Content.PageVersion.create(version_attrs, actor: user),
+         {:ok, _} <-
+           Ash.update(page_locale, %{published_version_id: published_version.id},
+             action: :publish_locale,
+             actor: user
+           ) do
+      locales = load_locales(page, user)
+      locale_map = Map.new(locales, &{&1.locale, &1})
+
+      {:noreply,
+       socket
+       |> assign(:locales, locales)
+       |> assign(:locale_map, locale_map)
+       |> assign(:save_status, :saved)
+       |> put_flash(:info, "Published v#{published_version.version_number}")}
+    else
+      {:locale, nil} ->
+        {:noreply, put_flash(socket, :error, "Save content first")}
 
       {:error, _} ->
-        {:noreply, put_flash(socket, :error, "Failed to save version")}
+        {:noreply, put_flash(socket, :error, "Failed to publish")}
     end
   end
 
   @impl true
-  def handle_event("publish_locale", _params, socket) do
+  def handle_event("unpublish", _params, socket) do
     user = socket.assigns.current_user
     page = socket.assigns.page
     locale = socket.assigns.current_locale
-    version = socket.assigns.version
+    page_locale = socket.assigns.locale_map[locale]
 
-    if version do
-      page_locale =
-        Enum.find(socket.assigns.locales, fn pl -> pl.locale == locale end)
+    case Ash.update(page_locale, %{}, action: :unpublish_locale, actor: user) do
+      {:ok, _} ->
+        locales = load_locales(page, user)
+        locale_map = Map.new(locales, &{&1.locale, &1})
 
-      if page_locale do
-        case Ash.update(page_locale, %{published_version_id: version.id},
-               action: :publish_locale,
-               actor: user
-             ) do
-          {:ok, _} ->
-            locales = load_locales(page, user)
-            locale_map = Map.new(locales, &{&1.locale, &1})
+        {:noreply,
+         socket
+         |> assign(:locales, locales)
+         |> assign(:locale_map, locale_map)
+         |> put_flash(:info, "Locale unpublished")}
 
-            {:noreply,
-             socket
-             |> assign(:locales, locales)
-             |> assign(:locale_map, locale_map)
-             |> put_flash(:info, "Locale published")}
-
-          {:error, _} ->
-            {:noreply, put_flash(socket, :error, "Failed to publish locale")}
-        end
-      else
-        {:noreply, put_flash(socket, :error, "Locale not found")}
-      end
-    else
-      {:noreply, put_flash(socket, :error, "Save a version first")}
+      {:error, _} ->
+        {:noreply, put_flash(socket, :error, "Failed to unpublish")}
     end
   end
 
@@ -697,6 +696,7 @@ defmodule NexusWeb.PageLive.Edit do
             socket
             |> assign(:version, version)
             |> assign(:save_status, :saved)
+            |> maybe_mark_locale_changed()
 
           {:error, _} ->
             assign(socket, :save_status, :error)
@@ -708,10 +708,35 @@ defmodule NexusWeb.PageLive.Edit do
             socket
             |> assign(:version, updated)
             |> assign(:save_status, :saved)
+            |> maybe_mark_locale_changed()
 
           {:error, _} ->
             assign(socket, :save_status, :error)
         end
+    end
+  end
+
+  defp maybe_mark_locale_changed(socket) do
+    locale = socket.assigns.current_locale
+    page_locale = socket.assigns.locale_map[locale]
+
+    if page_locale && page_locale.published_version_id && !page_locale.has_unpublished_changes do
+      case Ash.update(page_locale, %{}, action: :mark_changed, actor: socket.assigns.current_user) do
+        {:ok, updated_locale} ->
+          locale_map = Map.put(socket.assigns.locale_map, locale, updated_locale)
+
+          locales =
+            Enum.map(socket.assigns.locales, fn l ->
+              if l.id == updated_locale.id, do: updated_locale, else: l
+            end)
+
+          assign(socket, locale_map: locale_map, locales: locales)
+
+        {:error, _} ->
+          socket
+      end
+    else
+      socket
     end
   end
 
@@ -1032,9 +1057,32 @@ defmodule NexusWeb.PageLive.Edit do
               Publish
             </h3>
             <div class="space-y-3">
-              <div :if={@version} class="flex items-center justify-between">
-                <span class="text-sm text-base-content/60">Version</span>
-                <span class="text-sm font-mono">v{@version.version_number}</span>
+              <% page_locale = @locale_map[@current_locale] %>
+              <% is_published = page_locale && page_locale.published_version_id != nil %>
+              <% has_changes = page_locale && page_locale.has_unpublished_changes %>
+              <div class="flex items-center justify-between">
+                <span class="text-sm text-base-content/60">Status</span>
+                <span class={[
+                  "badge badge-sm",
+                  is_published && !has_changes && "badge-success",
+                  is_published && has_changes && "badge-warning",
+                  !is_published && "badge-neutral"
+                ]}>
+                  {cond do
+                    is_published && has_changes -> "Unpublished changes"
+                    is_published -> "Published"
+                    true -> "Draft"
+                  end}
+                </span>
+              </div>
+              <div
+                :if={is_published && page_locale.published_version}
+                class="flex items-center justify-between"
+              >
+                <span class="text-sm text-base-content/60">Published version</span>
+                <span class="text-sm font-mono">
+                  v{page_locale.published_version.version_number}
+                </span>
               </div>
               <%!-- Save status indicator --%>
               <div class="flex items-center gap-1.5 text-sm">
@@ -1043,20 +1091,20 @@ defmodule NexusWeb.PageLive.Edit do
 
               <div class="flex gap-2">
                 <.button
-                  phx-click="save_version"
-                  class="btn btn-sm flex-1"
-                  phx-disable-with="Saving..."
+                  phx-click="publish"
+                  class="btn btn-success btn-sm flex-1"
+                  phx-disable-with="Publishing..."
                 >
-                  Save as Version
+                  Publish ({String.upcase(@current_locale)})
+                </.button>
+                <.button
+                  :if={is_published}
+                  phx-click="unpublish"
+                  class="btn btn-warning btn-sm flex-1"
+                >
+                  Unpublish
                 </.button>
               </div>
-              <.button
-                :if={@version}
-                phx-click="publish_locale"
-                class="btn btn-ghost btn-sm w-full border border-base-content/20"
-              >
-                Publish Locale ({String.upcase(@current_locale)})
-              </.button>
             </div>
           </div>
 
