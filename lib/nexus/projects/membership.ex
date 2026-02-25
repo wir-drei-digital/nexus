@@ -44,7 +44,7 @@ defmodule Nexus.Projects.Membership do
 
     policy action_type(:create) do
       description "Only project admins can add members"
-      authorize_if expr(exists(project.memberships, user_id == ^actor(:id) and role == :admin))
+      authorize_if Nexus.Checks.ActorIsProjectAdmin
     end
 
     policy action_type(:update) do
