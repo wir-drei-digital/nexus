@@ -238,6 +238,11 @@ defmodule Nexus.Accounts.User do
     bypass AshAuthentication.Checks.AshAuthenticationInteraction do
       authorize_if always()
     end
+
+    policy action_type(:read) do
+      description "Any authenticated user can read user records"
+      authorize_if actor_present()
+    end
   end
 
   attributes do

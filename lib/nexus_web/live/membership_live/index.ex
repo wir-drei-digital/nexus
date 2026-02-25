@@ -17,7 +17,7 @@ defmodule NexusWeb.MembershipLive.Index do
   end
 
   @impl true
-  def handle_event("update_role", %{"id" => id, "role" => role}, socket) do
+  def handle_event("update_role", %{"membership_id" => id, "role" => role}, socket) do
     role_atom = String.to_existing_atom(role)
 
     case Ash.get(Nexus.Projects.Membership, id, authorize?: false) do
@@ -102,30 +102,37 @@ defmodule NexusWeb.MembershipLive.Index do
             class="flex items-center justify-between p-4 bg-base-200 rounded-box"
           >
             <div class="flex items-center gap-3">
-              <div class="avatar placeholder">
-                <div class="bg-neutral text-neutral-content w-10 rounded-full">
-                  <span class="text-sm">
-                    {membership.user.email |> to_string() |> String.first() |> String.upcase()}
-                  </span>
-                </div>
+              <div class="flex items-center justify-center w-10 h-10 rounded-full bg-neutral text-neutral-content shrink-0">
+                <span class="text-sm font-medium leading-none">
+                  {membership.user.email |> to_string() |> String.first() |> String.upcase()}
+                </span>
               </div>
               <div>
-                <div class="font-medium">{membership.user.email}</div>
+                <div class="font-medium">
+                  {membership.user.email}
+                  <span
+                    :if={membership.user_id == @current_user.id}
+                    class="badge badge-sm badge-ghost ml-1"
+                  >
+                    You
+                  </span>
+                </div>
                 <div class="text-sm text-base-content/60 capitalize">{membership.role}</div>
               </div>
             </div>
 
-            <div :if={@project_role == :admin} class="flex items-center gap-2">
-              <select
-                class="select select-sm select-bordered"
-                phx-change="update_role"
-                phx-value-id={membership.id}
-                name="role"
-              >
-                <option value="admin" selected={membership.role == :admin}>Admin</option>
-                <option value="editor" selected={membership.role == :editor}>Editor</option>
-                <option value="viewer" selected={membership.role == :viewer}>Viewer</option>
-              </select>
+            <div
+              :if={@project_role == :admin and membership.user_id != @current_user.id}
+              class="flex items-center gap-2"
+            >
+              <form phx-change="update_role">
+                <input type="hidden" name="membership_id" value={membership.id} />
+                <select class="select select-sm select-bordered" name="role">
+                  <option value="admin" selected={membership.role == :admin}>Admin</option>
+                  <option value="editor" selected={membership.role == :editor}>Editor</option>
+                  <option value="viewer" selected={membership.role == :viewer}>Viewer</option>
+                </select>
+              </form>
               <button
                 phx-click="remove_member"
                 phx-value-id={membership.id}
