@@ -18,7 +18,7 @@ When running in production without Mix installed, you can use the following scri
 To add a new user via SSH on the production server:
 
 ```bash
-./add_user daniel@wirdrei.digital "ZUGWh7Ce^$Rm7^wSA3XnBx9*f9m"
+./add_user daniel@example.com "xxx"
 ```
 
 This works because the release includes the `Nexus.Release.add_user/2` function that can be executed without Mix.

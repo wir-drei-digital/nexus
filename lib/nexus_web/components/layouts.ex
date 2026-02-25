@@ -99,7 +99,7 @@ defmodule NexusWeb.Layouts do
             id="content-tree"
             phx-hook="ContentTreeSort"
             data-project-id={@project.id}
-            class="mt-1"
+            class="mt-1 overflow-hidden"
           >
             <ul
               class="menu menu-sm p-0 sortable-container  w-full "
@@ -235,13 +235,13 @@ defmodule NexusWeb.Layouts do
     <%= if @item.type == :folder do %>
       <li
         id={"tree-item-folder-#{@item.data.id}"}
-        class="tree-item w-full pb-1"
+        class="tree-item w-full pb-1 min-w-0 overflow-hidden"
         data-type="folder"
         data-id={@item.data.id}
         data-position={@item.data.position || 0}
         data-parent-id={@item.data.parent_id || ""}
       >
-        <details open>
+        <details open class="w-full overflow-hidden min-w-0">
           <summary class="group folder-summary ">
             <.icon name="hero-folder" class="size-4 shrink-0 folder-closed" />
             <.icon name="hero-folder-open" class="size-4 shrink-0 folder-open" />
@@ -270,7 +270,7 @@ defmodule NexusWeb.Layouts do
     <% else %>
       <li
         id={"tree-item-page-#{@item.data.id}"}
-        class="tree-item w-full pb-1"
+        class="tree-item w-full pb-1 min-w-0 overflow-hidden"
         data-type="page"
         data-id={@item.data.id}
         data-position={@item.data.position || 0}
@@ -281,7 +281,7 @@ defmodule NexusWeb.Layouts do
           <.link
             navigate={~p"/admin/#{@project_slug}/pages/#{@item.data.id}/edit"}
             class={[
-              "group",
+              "group overflow-hidden max-w-full",
               if(@active_page_id == @item.data.id,
                 do: "bg-primary/10 text-primary font-medium",
                 else: "text-base-content/60"
@@ -314,7 +314,7 @@ defmodule NexusWeb.Layouts do
           <.link
             navigate={~p"/admin/#{@project_slug}/pages/#{@item.data.id}/edit"}
             class={[
-              "group",
+              "group overflow-hidden max-w-full",
               if(@active_page_id == @item.data.id,
                 do: "bg-primary/10 text-primary font-medium",
                 else: "text-base-content/60"
@@ -366,7 +366,7 @@ defmodule NexusWeb.Layouts do
     assigns = assign(assigns, :icon, icon)
 
     ~H"""
-    <li class="tree-item w-full pb-1" id="inline-create-item">
+    <li class="tree-item w-full pb-1 min-w-0 overflow-hidden" id="inline-create-item">
       <form
         phx-submit="save_inline_content"
         phx-click-away="cancel_inline_create"
