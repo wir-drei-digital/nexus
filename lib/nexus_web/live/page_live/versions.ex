@@ -14,11 +14,17 @@ defmodule NexusWeb.PageLive.Versions do
         locale = project.default_locale
         versions = load_versions(page, locale)
 
+        locales =
+          Nexus.Content.PageLocale.for_page!(page.id, actor: user, load: [:published_version])
+
+        locale_map = Map.new(locales, &{&1.locale, &1})
+
         {:ok,
          socket
          |> assign(:page_title, "#{page.slug} - Version History")
          |> assign(:page, page)
          |> assign(:current_locale, locale)
+         |> assign(:locale_map, locale_map)
          |> stream(:versions, versions)}
 
       {:error, _} ->
@@ -124,6 +130,15 @@ defmodule NexusWeb.PageLive.Versions do
               <div class="flex items-center gap-2">
                 <span class="font-bold">v{version.version_number}</span>
                 <span :if={version.is_current} class="badge badge-primary badge-sm">Current</span>
+                <span
+                  :if={
+                    @locale_map[@current_locale] &&
+                      @locale_map[@current_locale].published_version_id == version.id
+                  }
+                  class="badge badge-success badge-sm"
+                >
+                  Published
+                </span>
               </div>
               <div class="text-sm text-base-content/60">
                 {version.title || "(untitled)"}
