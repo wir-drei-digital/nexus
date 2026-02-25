@@ -215,36 +215,6 @@ defmodule NexusWeb.PageLive.Edit do
   end
 
   @impl true
-  def handle_event("publish", _params, socket) do
-    user = socket.assigns.current_user
-    page = socket.assigns.page
-
-    with {:ok, page} <- Ash.update(page, %{}, action: :publish, actor: user) do
-      {:noreply,
-       socket
-       |> assign(:page, page)
-       |> put_flash(:info, "Page published")}
-    else
-      {:error, _} -> {:noreply, put_flash(socket, :error, "Failed to publish")}
-    end
-  end
-
-  @impl true
-  def handle_event("unpublish", _params, socket) do
-    user = socket.assigns.current_user
-    page = socket.assigns.page
-
-    with {:ok, page} <- Ash.update(page, %{}, action: :unpublish, actor: user) do
-      {:noreply,
-       socket
-       |> assign(:page, page)
-       |> put_flash(:info, "Page unpublished")}
-    else
-      {:error, _} -> {:noreply, put_flash(socket, :error, "Failed to unpublish")}
-    end
-  end
-
-  @impl true
   def handle_event("publish_locale", _params, socket) do
     user = socket.assigns.current_user
     page = socket.assigns.page
@@ -1062,17 +1032,6 @@ defmodule NexusWeb.PageLive.Edit do
               Publish
             </h3>
             <div class="space-y-3">
-              <div class="flex items-center justify-between">
-                <span class="text-sm text-base-content/60">Status</span>
-                <span class={[
-                  "badge badge-sm",
-                  @page.status == :published && "badge-success",
-                  @page.status == :draft && "badge-warning",
-                  @page.status == :archived && "badge-neutral"
-                ]}>
-                  {@page.status}
-                </span>
-              </div>
               <div :if={@version} class="flex items-center justify-between">
                 <span class="text-sm text-base-content/60">Version</span>
                 <span class="text-sm font-mono">v{@version.version_number}</span>
@@ -1090,15 +1049,6 @@ defmodule NexusWeb.PageLive.Edit do
                 >
                   Save as Version
                 </.button>
-                <%= if @page.status == :published do %>
-                  <.button phx-click="unpublish" class="btn btn-warning btn-sm flex-1">
-                    Unpublish
-                  </.button>
-                <% else %>
-                  <.button phx-click="publish" class="btn btn-success btn-sm flex-1">
-                    Publish
-                  </.button>
-                <% end %>
               </div>
               <.button
                 :if={@version}

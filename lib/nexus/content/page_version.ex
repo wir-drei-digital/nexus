@@ -110,7 +110,7 @@ defmodule Nexus.Content.PageVersion do
   policies do
     policy action_type(:read) do
       authorize_if expr(exists(page.project.memberships, user_id == ^actor(:id)))
-      authorize_if expr(page.project.is_public == true and page.status == :published)
+      authorize_if expr(page.project.is_public == true)
       authorize_if expr(page.project_id == ^actor(:project_id))
     end
 

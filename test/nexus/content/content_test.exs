@@ -44,7 +44,6 @@ defmodule Nexus.Content.ContentTest do
       page = create_page(project, user, %{slug: "hello-world"})
 
       assert to_string(page.full_path) == "hello-world"
-      assert page.status == :draft
     end
 
     test "builds full_path from folder", %{user: user, project: project} do
@@ -54,18 +53,6 @@ defmodule Nexus.Content.ContentTest do
         create_page(project, user, %{slug: "my-post", folder_id: folder.id})
 
       assert to_string(page.full_path) == "blog/my-post"
-    end
-
-    test "publish/unpublish workflow", %{user: user, project: project} do
-      page = create_page(project, user)
-      assert page.status == :draft
-
-      published = Nexus.Content.Page.publish!(page, actor: user)
-      assert published.status == :published
-      assert published.published_at != nil
-
-      unpublished = Nexus.Content.Page.unpublish!(published, actor: user)
-      assert unpublished.status == :draft
     end
 
     test "soft delete excludes from listing", %{user: user, project: project} do
@@ -79,11 +66,10 @@ defmodule Nexus.Content.ContentTest do
       assert Enum.all?(pages, fn p -> p.id != page.id end)
     end
 
-    test "archive sets status to archived", %{user: user, project: project} do
+    test "archive sets archived_at", %{user: user, project: project} do
       page = create_page(project, user)
 
       archived = Nexus.Content.Page.archive!(page, actor: user)
-      assert archived.status == :archived
       assert archived.archived_at != nil
     end
   end

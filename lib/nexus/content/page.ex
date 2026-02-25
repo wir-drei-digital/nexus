@@ -34,8 +34,6 @@ defmodule Nexus.Content.Page do
     define :list_for_project_slug, args: [:project_slug]
     define :get_published_content, args: [:project_slug, :path, :locale]
     define :update
-    define :publish
-    define :unpublish
     define :archive
     define :soft_delete
     define :restore
@@ -117,25 +115,10 @@ defmodule Nexus.Content.Page do
       change Nexus.Content.Changes.CalculateFullPath
     end
 
-    update :publish do
-      accept []
-      require_atomic? false
-
-      change set_attribute(:status, :published)
-      change set_attribute(:published_at, &DateTime.utc_now/0)
-    end
-
-    update :unpublish do
-      accept []
-
-      change set_attribute(:status, :draft)
-    end
-
     update :archive do
       accept []
       require_atomic? false
 
-      change set_attribute(:status, :archived)
       change set_attribute(:archived_at, &DateTime.utc_now/0)
     end
 
@@ -160,7 +143,7 @@ defmodule Nexus.Content.Page do
 
     policy action_type(:read) do
       authorize_if expr(exists(project.memberships, user_id == ^actor(:id)))
-      authorize_if expr(project.is_public == true and status == :published)
+      authorize_if expr(project.is_public == true)
       authorize_if expr(project_id == ^actor(:project_id))
     end
 
@@ -168,7 +151,7 @@ defmodule Nexus.Content.Page do
       authorize_if {Nexus.Projects.Checks.HasProjectRole, roles: [:admin, :editor]}
     end
 
-    policy action([:update, :publish, :unpublish, :archive, :soft_delete, :restore]) do
+    policy action([:update, :archive, :soft_delete, :restore]) do
       authorize_if expr(
                      exists(
                        project.memberships,
@@ -196,13 +179,6 @@ defmodule Nexus.Content.Page do
       writable? false
     end
 
-    attribute :status, :atom do
-      constraints one_of: [:draft, :published, :archived]
-      default :draft
-      allow_nil? false
-      public? true
-    end
-
     attribute :template_slug, :string do
       default "default"
       allow_nil? false
@@ -215,7 +191,6 @@ defmodule Nexus.Content.Page do
       public? true
     end
 
-    attribute :published_at, :utc_datetime
     attribute :archived_at, :utc_datetime
     attribute :deleted_at, :utc_datetime
 

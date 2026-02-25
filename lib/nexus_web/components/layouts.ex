@@ -290,9 +290,6 @@ defmodule NexusWeb.Layouts do
           >
             <.icon name="hero-document-text" class="size-4 shrink-0" />
             <span class="truncate text-sm">{@item[:title] || @item.data.slug}</span>
-            <span :if={@item.data.status == :published} class="shrink-0">
-              <span class="w-1.5 h-1.5 rounded-full bg-success inline-block"></span>
-            </span>
             <.icon
               name="hero-bars-2"
               class="size-3 text-base-content/30 shrink-0 cursor-grab tree-drag-handle ml-auto"
@@ -323,9 +320,6 @@ defmodule NexusWeb.Layouts do
           >
             <.icon name="hero-document-text" class="size-4 shrink-0" />
             <span class="truncate text-sm">{@item[:title] || @item.data.slug}</span>
-            <span :if={@item.data.status == :published} class="shrink-0">
-              <span class="w-1.5 h-1.5 rounded-full bg-success inline-block"></span>
-            </span>
             <.icon
               name="hero-bars-2"
               class="size-3 text-base-content/30 shrink-0 cursor-grab tree-drag-handle ml-auto"
