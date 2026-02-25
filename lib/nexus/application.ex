@@ -17,6 +17,7 @@ defmodule Nexus.Application do
          Application.fetch_env!(:nexus, Oban)
        )},
       {Phoenix.PubSub, name: Nexus.PubSub},
+      NexusWeb.Presence,
       # Start a worker by calling: Nexus.Worker.start_link(arg)
       # {Nexus.Worker, arg},
       # Start to serve requests, typically the last entry

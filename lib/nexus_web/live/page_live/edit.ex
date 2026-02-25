@@ -21,6 +21,17 @@ defmodule NexusWeb.PageLive.Edit do
         template_data = extract_template_data(version, template)
         available_templates = Registry.available_for_project(project.available_templates)
 
+        if connected?(socket) do
+          topic = "page:#{page.id}"
+
+          NexusWeb.Presence.track(self(), topic, to_string(user.id), %{
+            name: user.email,
+            locale: locale
+          })
+
+          NexusWeb.Endpoint.subscribe(topic)
+        end
+
         {:ok,
          socket
          |> assign(:page_title, "Edit - #{page.slug}")
@@ -45,6 +56,7 @@ defmodule NexusWeb.PageLive.Edit do
          |> assign(:auto_translate, true)
          |> assign(:copying_content, false)
          |> assign(:show_copy_confirm, false)
+         |> assign(:presences, [])
          |> assign(:show_media_picker, false)
          |> assign(:media_picker_meta, %{})
          |> allow_upload(:editor_media_upload,
@@ -89,6 +101,18 @@ defmodule NexusWeb.PageLive.Edit do
     template_data = extract_template_data(version, template)
 
     socket = push_rich_text_content(socket, template, template_data)
+
+    if connected?(socket) do
+      NexusWeb.Presence.update(
+        self(),
+        "page:#{page.id}",
+        to_string(socket.assigns.current_user.id),
+        %{
+          name: socket.assigns.current_user.email,
+          locale: locale
+        }
+      )
+    end
 
     {:noreply,
      socket
@@ -621,6 +645,16 @@ defmodule NexusWeb.PageLive.Edit do
   end
 
   @impl true
+  def handle_info(%Phoenix.Socket.Broadcast{event: "presence_diff"}, socket) do
+    presences =
+      NexusWeb.Presence.list("page:#{socket.assigns.page.id}")
+      |> Enum.reject(fn {uid, _} -> uid == to_string(socket.assigns.current_user.id) end)
+      |> Enum.map(fn {_uid, %{metas: [meta | _]}} -> meta end)
+
+    {:noreply, assign(socket, :presences, presences)}
+  end
+
+  @impl true
   def handle_info(:auto_save_meta, socket) do
     {:noreply,
      socket
@@ -1023,6 +1057,20 @@ defmodule NexusWeb.PageLive.Edit do
                 page_locale={@locale_map[loc]}
                 is_active={loc == @current_locale}
               />
+              <%!-- Active editors --%>
+              <div :if={@presences != []} class="flex items-center gap-1 ml-2">
+                <div
+                  :for={p <- @presences}
+                  class="tooltip tooltip-bottom"
+                  data-tip={"#{p.name} editing #{String.upcase(p.locale)}"}
+                >
+                  <div class="avatar placeholder">
+                    <div class="bg-neutral text-neutral-content w-6 rounded-full text-xs">
+                      {String.first(p.name)}
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
 
             <%!-- Title --%>
@@ -1419,6 +1467,7 @@ defmodule NexusWeb.PageLive.Edit do
         id={"tiptap-editor-#{@key}"}
         content={@value}
         section_key={@key}
+        debounce_save={500}
       />
     </div>
     """
