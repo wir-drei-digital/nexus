@@ -135,6 +135,15 @@ defmodule NexusWeb.ProjectLive.Settings do
             Comma-separated list of locale codes (e.g., en, de, fr, es)
           </p>
           <.input field={@form[:is_public]} label="Public" type="checkbox" />
+          <.input
+            field={@form[:system_prompt]}
+            label="AI System Prompt"
+            type="textarea"
+            placeholder="e.g., You are writing content for a B2B SaaS company. Use a professional tone..."
+          />
+          <p class="text-xs text-base-content/50 -mt-2">
+            Custom instructions injected into all AI actions (SEO generation, content refinement, translation).
+          </p>
           <div>
             <span class="text-sm font-medium">Available Templates</span>
             <p class="text-xs text-base-content/50 mb-2">

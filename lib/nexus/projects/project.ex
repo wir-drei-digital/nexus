@@ -16,7 +16,19 @@ defmodule Nexus.Projects.Project do
 
     routes do
       base "/projects"
-      get :get_by_slug, route: "/:slug", primary?: true
+
+      get :get_by_slug,
+        route: "/:slug",
+        primary?: true,
+        default_fields: [
+          :name,
+          :slug,
+          :description,
+          :is_public,
+          :default_locale,
+          :available_locales,
+          :available_templates
+        ]
     end
   end
 
@@ -41,7 +53,8 @@ defmodule Nexus.Projects.Project do
         :is_public,
         :default_locale,
         :available_locales,
-        :available_templates
+        :available_templates,
+        :system_prompt
       ]
 
       change Nexus.Projects.Changes.CreateOwnerMembership
@@ -60,7 +73,8 @@ defmodule Nexus.Projects.Project do
         :is_public,
         :default_locale,
         :available_locales,
-        :available_templates
+        :available_templates,
+        :system_prompt
       ]
     end
   end
@@ -127,6 +141,10 @@ defmodule Nexus.Projects.Project do
     attribute :available_templates, {:array, :string} do
       default ["default"]
       allow_nil? false
+      public? true
+    end
+
+    attribute :system_prompt, :string do
       public? true
     end
 

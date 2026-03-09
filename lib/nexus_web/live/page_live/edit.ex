@@ -358,12 +358,13 @@ defmodule NexusWeb.PageLive.Edit do
   def handle_event("generate_seo", _params, socket) do
     title = socket.assigns.title
     template_data = socket.assigns.template_data
+    system_prompt = socket.assigns.project.system_prompt
 
     {:noreply,
      socket
      |> assign(:seo_generating, true)
      |> start_async(:generate_seo, fn ->
-       Nexus.AI.Assistant.generate_seo(title, Jason.encode!(template_data))
+       Nexus.AI.Assistant.generate_seo(title, Jason.encode!(template_data), system_prompt)
      end)}
   end
 
@@ -400,13 +401,20 @@ defmodule NexusWeb.PageLive.Edit do
         end
 
       context = build_page_context(template, socket.assigns.template_data)
+      system_prompt = socket.assigns.project.system_prompt
 
       {:noreply,
        socket
        |> assign(:refine_dialog, nil)
        |> update(:refining_keys, &[key | &1])
        |> start_async({:refine_content, key}, fn ->
-         case Nexus.AI.Assistant.refine_content(content_str, instructions, context, field_label) do
+         case Nexus.AI.Assistant.refine_content(
+                content_str,
+                instructions,
+                context,
+                field_label,
+                system_prompt
+              ) do
            {:ok, markdown} when field_type == :rich_text ->
              case Nexus.AI.ProseMirror.from_markdown(markdown) do
                {:ok, doc} -> {:rich_text, doc}
@@ -980,14 +988,17 @@ defmodule NexusWeb.PageLive.Edit do
     all_translatable = Map.merge(translatable_template, seo_translatable)
     all_field_types = Map.merge(field_types, seo_field_types)
 
+    system_prompt = socket.assigns.project.system_prompt
+
     socket
     |> assign(:copying_content, true)
     |> start_async(:copy_translate, fn ->
-      case Nexus.AI.Helpers.translate_content_impl(
+      case Nexus.AI.Assistant.translate_content(
              all_translatable,
              source_locale,
              target_locale,
-             all_field_types
+             all_field_types,
+             system_prompt
            ) do
         {:ok, translated} ->
           {:ok, translated, direct_template, seo_data}

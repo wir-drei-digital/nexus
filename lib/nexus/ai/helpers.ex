@@ -62,21 +62,30 @@ defmodule Nexus.AI.Helpers do
   - `:rich_text` fields are converted to/from markdown for LLM processing
   - `:text` and `:textarea` fields are passed as plain strings
   """
-  def translate_content_impl(content, _source_locale, _target_locale, _field_types)
+  def translate_content_impl(content, source_locale, target_locale, field_types, opts \\ [])
+
+  def translate_content_impl(content, _source_locale, _target_locale, _field_types, _opts)
       when content == %{} do
     {:ok, %{}}
   end
 
-  def translate_content_impl(content, source_locale, target_locale, field_types) do
+  def translate_content_impl(content, source_locale, target_locale, field_types, opts) do
+    project_system_prompt = Keyword.get(opts, :system_prompt)
     prepared = prepare_translation_content(content, field_types)
+
+    system_text =
+      with_project_guidelines(
+        """
+        You are a professional translator. Translate all content from #{locale_name(source_locale)} to #{locale_name(target_locale)}.
+        Preserve all formatting, markdown structure, links, and special characters exactly.
+        Do not add or remove any content — translate faithfully.\
+        """,
+        project_system_prompt
+      )
 
     prompt_messages =
       ReqLLM.Context.new([
-        ReqLLM.Context.system("""
-        You are a professional translator. Translate all content from #{locale_name(source_locale)} to #{locale_name(target_locale)}.
-        Preserve all formatting, markdown structure, links, and special characters exactly.
-        Do not add or remove any content — translate faithfully.
-        """),
+        ReqLLM.Context.system(system_text),
         ReqLLM.Context.user("""
         Translate each field value below. Return a JSON object with the same keys but translated values.
 
@@ -101,14 +110,19 @@ defmodule Nexus.AI.Helpers do
     end
   end
 
-  def generate_seo_impl(title, content) do
+  def generate_seo_impl(title, content, opts \\ []) do
+    project_system_prompt = Keyword.get(opts, :system_prompt)
     text_content = ProseMirror.extract_text(content)
+
+    system_text =
+      with_project_guidelines(
+        "You are an SEO expert. Generate meta description and keywords based on page content.",
+        project_system_prompt
+      )
 
     prompt_messages =
       ReqLLM.Context.new([
-        ReqLLM.Context.system(
-          "You are an SEO expert. Generate meta description and keywords based on page content."
-        ),
+        ReqLLM.Context.system(system_text),
         ReqLLM.Context.user("""
         Page Title: #{title}
 
@@ -133,16 +147,21 @@ defmodule Nexus.AI.Helpers do
     end
   end
 
-  def refine_content_impl(content, instructions, context, field_label) do
+  def refine_content_impl(content, instructions, context, field_label, opts \\ []) do
+    project_system_prompt = Keyword.get(opts, :system_prompt)
     text_content = ProseMirror.extract_text(content)
 
-    system_prompt = """
-    You are a professional content editor. You will receive the content of a specific \
-    field to refine, along with the full page context for reference. Follow the user's \
-    instructions precisely. Use markdown formatting with proper structure, headings, lists, \
-    and emphasis as appropriate. Return ONLY the refined markdown for the target field, \
-    no explanations or preamble.\
-    """
+    system_prompt =
+      with_project_guidelines(
+        """
+        You are a professional content editor. You will receive the content of a specific \
+        field to refine, along with the full page context for reference. Follow the user's \
+        instructions precisely. Use markdown formatting with proper structure, headings, lists, \
+        and emphasis as appropriate. Return ONLY the refined markdown for the target field, \
+        no explanations or preamble.\
+        """,
+        project_system_prompt
+      )
 
     user_prompt =
       if context != "" do
@@ -179,6 +198,15 @@ defmodule Nexus.AI.Helpers do
       {:error, reason} ->
         {:error, "Failed to refine content: #{inspect(reason)}"}
     end
+  end
+
+  defp with_project_guidelines(base, nil), do: base
+  defp with_project_guidelines(base, ""), do: base
+
+  defp with_project_guidelines(base, project_prompt) do
+    base <>
+      "\n\nThe following are project-specific guidelines provided by the project administrator. " <>
+      "Apply these while still following your core instructions above:\n" <> project_prompt
   end
 
   defp locale_name(code) do
