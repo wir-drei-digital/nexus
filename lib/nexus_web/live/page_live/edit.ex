@@ -396,7 +396,7 @@ defmodule NexusWeb.PageLive.Edit do
         case field_type do
           :rich_text when is_map(content) -> Jason.encode!(content)
           :rich_text -> Jason.encode!(Nexus.AI.ProseMirror.default_doc())
-          _ -> to_string(content || "")
+          _ -> if content in [nil, ""], do: " ", else: to_string(content)
         end
 
       context = build_page_context(template, socket.assigns.template_data)
