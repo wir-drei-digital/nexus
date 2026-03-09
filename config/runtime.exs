@@ -79,6 +79,8 @@ if config_env() == :prod do
   # Media storage
   config :nexus, :storage_backend, if(System.get_env("AWS_BUCKET"), do: :s3, else: :local)
 
+  config :ex_aws, :http_client, Nexus.Media.Storage.ExAwsReqClient
+
   if bucket = System.get_env("AWS_BUCKET") do
     config :nexus, :s3,
       access_key_id: System.get_env("AWS_ACCESS_KEY_ID"),
