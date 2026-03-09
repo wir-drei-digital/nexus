@@ -36,6 +36,7 @@ defmodule Nexus.Content.PageLocale do
     update :publish_locale do
       accept [:published_version_id]
       change set_attribute(:has_unpublished_changes, false)
+      change set_attribute(:published_at, &DateTime.utc_now/0)
     end
 
     update :mark_changed do
@@ -46,6 +47,7 @@ defmodule Nexus.Content.PageLocale do
     update :unpublish_locale do
       accept []
       change set_attribute(:published_version_id, nil)
+      change set_attribute(:published_at, nil)
     end
   end
 
@@ -81,6 +83,10 @@ defmodule Nexus.Content.PageLocale do
     attribute :has_unpublished_changes, :boolean do
       default false
       allow_nil? false
+      public? true
+    end
+
+    attribute :published_at, :utc_datetime do
       public? true
     end
 

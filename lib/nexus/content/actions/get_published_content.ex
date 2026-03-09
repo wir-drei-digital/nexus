@@ -20,7 +20,7 @@ defmodule Nexus.Content.Actions.GetPublishedContent do
     with {:ok, project} <- get_project(project_slug),
          {:ok, page} <- get_page(project, path, actor),
          effective_locale = locale || project.default_locale,
-         {:ok, version} <- get_published_version(page, effective_locale) do
+         {:ok, page_locale, version} <- get_published_version(page, effective_locale) do
       html_content = Renderer.render(page.template_slug, version.template_data)
 
       {:ok,
@@ -36,7 +36,8 @@ defmodule Nexus.Content.Actions.GetPublishedContent do
          html: html_content,
          template_slug: page.template_slug,
          template_data: version.template_data,
-         version_number: version.version_number
+         version_number: version.version_number,
+         published_at: page_locale.published_at && DateTime.to_iso8601(page_locale.published_at)
        }}
     else
       {:error, :not_found} ->
@@ -73,7 +74,7 @@ defmodule Nexus.Content.Actions.GetPublishedContent do
            authorize?: false,
            load: [:published_version]
          ) do
-      {:ok, %{published_version: %{id: _} = version}} -> {:ok, version}
+      {:ok, %{published_version: %{id: _} = version} = page_locale} -> {:ok, page_locale, version}
       _ -> {:error, :no_published_version}
     end
   end
