@@ -1148,6 +1148,18 @@ defmodule NexusWeb.PageLive.Edit do
                   v{page_locale.published_version.version_number}
                 </span>
               </div>
+              <div
+                :if={is_published && page_locale.published_at}
+                class="flex items-center justify-between"
+              >
+                <span class="text-sm text-base-content/60">Published at</span>
+                <time
+                  class="text-sm text-base-content/80"
+                  datetime={DateTime.to_iso8601(page_locale.published_at)}
+                >
+                  {Calendar.strftime(page_locale.published_at, "%b %d, %Y %H:%M")}
+                </time>
+              </div>
               <%!-- Save status indicator --%>
               <div class="flex items-center gap-1.5 text-sm">
                 <.save_status_indicator status={@save_status} />
