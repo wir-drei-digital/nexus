@@ -264,6 +264,16 @@ defmodule NexusWeb.Layouts do
               project_slug={@project_slug}
               active_page_id={@active_page_id}
             />
+            <li>
+              <button
+                type="button"
+                phx-click="create_child_page"
+                phx-value-folder_id={@item.data.id}
+                class="text-xs text-base-content/30 hover:text-base-content/60 transition-colors w-full"
+              >
+                <.icon name="hero-plus" class="size-3" /> New page
+              </button>
+            </li>
           </ul>
         </details>
       </li>
@@ -306,6 +316,16 @@ defmodule NexusWeb.Layouts do
               project_slug={@project_slug}
               active_page_id={@active_page_id}
             />
+            <li>
+              <button
+                type="button"
+                phx-click="create_child_page"
+                phx-value-parent_page_id={@item.data.id}
+                class="text-xs text-base-content/30 hover:text-base-content/60 transition-colors w-full"
+              >
+                <.icon name="hero-plus" class="size-3" /> New page
+              </button>
+            </li>
           </ul>
         <% else %>
           <.link

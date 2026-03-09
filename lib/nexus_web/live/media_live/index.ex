@@ -30,7 +30,7 @@ defmodule NexusWeb.MediaLive.Index do
 
   @impl true
   def handle_event(event, params, socket)
-      when event in ~w(reorder_tree_item start_creating_page start_creating_folder cancel_inline_create save_inline_content) do
+      when event in ~w(reorder_tree_item start_creating_page start_creating_folder cancel_inline_create save_inline_content create_child_page) do
     NexusWeb.ContentTreeHandlers.handle_event(event, params, socket)
   end
 

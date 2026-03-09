@@ -18,6 +18,34 @@ defmodule NexusWeb.ContentTreeHandlers do
     {:noreply, assign(socket, :creating_content_type, nil)}
   end
 
+  def handle_event("create_child_page", params, socket) do
+    parent_attrs =
+      cond do
+        params["folder_id"] -> %{"folder_id" => params["folder_id"]}
+        params["parent_page_id"] -> %{"parent_page_id" => params["parent_page_id"]}
+        true -> %{}
+      end
+
+    slug = "new-page-#{System.unique_integer([:positive])}"
+
+    attrs =
+      Map.merge(parent_attrs, %{
+        "slug" => slug,
+        "project_id" => socket.assigns.project.id
+      })
+
+    case Nexus.Content.Page.create(attrs, actor: socket.assigns.current_user) do
+      {:ok, page} ->
+        {:noreply,
+         socket
+         |> reload_sidebar()
+         |> push_navigate(to: "/admin/#{socket.assigns.project.slug}/pages/#{page.id}/edit")}
+
+      {:error, _} ->
+        {:noreply, put_flash(socket, :error, "Failed to create page")}
+    end
+  end
+
   def handle_event("save_inline_content", %{"type" => "page", "name" => name}, socket)
       when name != "" do
     attrs = %{
