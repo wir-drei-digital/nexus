@@ -122,7 +122,69 @@ defmodule Nexus.AI.ProseMirror do
   # ---------------------------------------------------------------------------
 
   defp convert_nodes(nodes) when is_list(nodes) do
-    Enum.flat_map(nodes, &convert_node/1)
+    convert_nodes_acc(nodes, [])
+    |> Enum.reverse()
+    |> List.flatten()
+  end
+
+  # Scan node list for <!-- details: ... --> markers and group into details blocks
+  defp convert_nodes_acc([], acc), do: acc
+
+  defp convert_nodes_acc([%MDEx.HtmlBlock{literal: literal} | rest], acc) do
+    case Regex.run(~r/<!--\s*details:\s*(.*?)\s*-->/, literal) do
+      [_, summary_text] ->
+        {body_nodes, remaining} = collect_until_details_end(rest, [])
+        body_content = convert_nodes(body_nodes)
+        summary_inline = parse_summary_inline(summary_text)
+
+        details_node = %{
+          "type" => "details",
+          "content" => [
+            %{"type" => "detailsSummary"} |> maybe_add_content(summary_inline),
+            %{
+              "type" => "detailsContent",
+              "content" =>
+                if(body_content == [], do: [%{"type" => "paragraph"}], else: body_content)
+            }
+          ]
+        }
+
+        convert_nodes_acc(remaining, [[details_node] | acc])
+
+      _ ->
+        convert_nodes_acc(rest, [convert_node(%MDEx.HtmlBlock{literal: literal}) | acc])
+    end
+  end
+
+  defp convert_nodes_acc([node | rest], acc) do
+    convert_nodes_acc(rest, [convert_node(node) | acc])
+  end
+
+  defp collect_until_details_end([], acc), do: {Enum.reverse(acc), []}
+
+  defp collect_until_details_end([%MDEx.HtmlBlock{literal: literal} | rest], acc) do
+    if String.contains?(literal, "<!-- /details -->") do
+      {Enum.reverse(acc), rest}
+    else
+      collect_until_details_end(rest, [%MDEx.HtmlBlock{literal: literal} | acc])
+    end
+  end
+
+  defp collect_until_details_end([node | rest], acc) do
+    collect_until_details_end(rest, [node | acc])
+  end
+
+  defp parse_summary_inline(text) do
+    case MDEx.parse_document(text, extension: @mdex_extensions) do
+      {:ok, doc} ->
+        case doc.nodes do
+          [%MDEx.Paragraph{nodes: children}] -> convert_inline_nodes(children, [])
+          _ -> [%{"type" => "text", "text" => text}]
+        end
+
+      {:error, _} ->
+        [%{"type" => "text", "text" => text}]
+    end
   end
 
   defp convert_node(%MDEx.Paragraph{nodes: children}) do
@@ -355,6 +417,28 @@ defmodule Nexus.AI.ProseMirror do
     attrs["alt"] || ""
   end
 
+  defp node_to_plain_text(%{"type" => "details", "content" => content}) do
+    content
+    |> Enum.map(&node_to_plain_text/1)
+    |> Enum.reject(&(&1 == ""))
+    |> Enum.join("\n")
+  end
+
+  defp node_to_plain_text(%{"type" => "detailsSummary", "content" => content}) do
+    extract_inline_text(content)
+  end
+
+  defp node_to_plain_text(%{"type" => "detailsSummary"}), do: ""
+
+  defp node_to_plain_text(%{"type" => "detailsContent", "content" => content}) do
+    content
+    |> Enum.map(&node_to_plain_text/1)
+    |> Enum.reject(&(&1 == ""))
+    |> Enum.join("\n")
+  end
+
+  defp node_to_plain_text(%{"type" => "detailsContent"}), do: ""
+
   defp node_to_plain_text(_), do: ""
 
   # ---------------------------------------------------------------------------
@@ -457,7 +541,37 @@ defmodule Nexus.AI.ProseMirror do
     end)
   end
 
+  defp node_to_markdown(%{"type" => "details", "content" => content}) do
+    {summary_md, body_md} = details_to_markdown_parts(content)
+    "<!-- details: #{summary_md} -->\n\n#{body_md}\n\n<!-- /details -->"
+  end
+
   defp node_to_markdown(_), do: ""
+
+  defp details_to_markdown_parts(content) do
+    summary = Enum.find(content, &(&1["type"] == "detailsSummary"))
+    body = Enum.find(content, &(&1["type"] == "detailsContent"))
+
+    summary_text =
+      case summary do
+        %{"content" => inline} -> inline_to_markdown(inline)
+        _ -> ""
+      end
+
+    body_md =
+      case body do
+        %{"content" => nodes} ->
+          nodes
+          |> Enum.map(&node_to_markdown/1)
+          |> Enum.reject(&(&1 == ""))
+          |> Enum.join("\n\n")
+
+        _ ->
+          ""
+      end
+
+    {summary_text, body_md}
+  end
 
   defp table_cell_to_markdown(%{"content" => content}) do
     content |> Enum.map(&node_to_markdown/1) |> Enum.join(" ") |> String.trim()

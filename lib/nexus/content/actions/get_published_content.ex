@@ -8,7 +8,7 @@ defmodule Nexus.Content.Actions.GetPublishedContent do
 
   use Ash.Resource.Actions.Implementation
 
-  alias Nexus.Content.Templates.Renderer
+  alias Nexus.Content.Templates.{Registry, Renderer, Template}
 
   @impl true
   def run(input, _opts, context) do
@@ -36,6 +36,7 @@ defmodule Nexus.Content.Actions.GetPublishedContent do
          html: html_content,
          template_slug: page.template_slug,
          template_data: version.template_data,
+         template_fields: serialize_template_fields(page.template_slug),
          version_number: version.version_number,
          published_at: page_locale.published_at && DateTime.to_iso8601(page_locale.published_at)
        }}
@@ -66,6 +67,25 @@ defmodule Nexus.Content.Actions.GetPublishedContent do
     case Nexus.Content.Page.get_by_path(project.id, full_path, actor: actor) do
       {:ok, page} -> {:ok, page}
       {:error, _} -> {:error, :not_found}
+    end
+  end
+
+  defp serialize_template_fields(template_slug) do
+    case Registry.get(template_slug) do
+      nil ->
+        []
+
+      template ->
+        template
+        |> Template.all_fields()
+        |> Enum.map(fn field ->
+          %{
+            key: Atom.to_string(field.key),
+            type: Atom.to_string(field.type),
+            label: field.label,
+            required: field.required
+          }
+        end)
     end
   end
 

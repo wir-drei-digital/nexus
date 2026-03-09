@@ -560,6 +560,203 @@ defmodule Nexus.AI.ProseMirrorTest do
       assert ProseMirror.to_markdown(doc) == expected
     end
 
+    test "converts details block with summary and content" do
+      doc = %{
+        "type" => "doc",
+        "content" => [
+          %{
+            "type" => "details",
+            "content" => [
+              %{
+                "type" => "detailsSummary",
+                "content" => [%{"type" => "text", "text" => "Click to expand"}]
+              },
+              %{
+                "type" => "detailsContent",
+                "content" => [
+                  %{
+                    "type" => "paragraph",
+                    "content" => [%{"type" => "text", "text" => "Hidden content here"}]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+
+      result = ProseMirror.to_markdown(doc)
+      assert result =~ "<!-- details: Click to expand -->"
+      assert result =~ "Hidden content here"
+      assert result =~ "<!-- /details -->"
+    end
+
+    test "converts details block with formatted content" do
+      doc = %{
+        "type" => "doc",
+        "content" => [
+          %{
+            "type" => "details",
+            "content" => [
+              %{
+                "type" => "detailsSummary",
+                "content" => [%{"type" => "text", "text" => "FAQ"}]
+              },
+              %{
+                "type" => "detailsContent",
+                "content" => [
+                  %{
+                    "type" => "paragraph",
+                    "content" => [
+                      %{"type" => "text", "text" => "This is "},
+                      %{
+                        "type" => "text",
+                        "text" => "bold",
+                        "marks" => [%{"type" => "bold"}]
+                      },
+                      %{"type" => "text", "text" => " text"}
+                    ]
+                  },
+                  %{
+                    "type" => "paragraph",
+                    "content" => [%{"type" => "text", "text" => "Second paragraph"}]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+
+      result = ProseMirror.to_markdown(doc)
+      assert result =~ "<!-- details: FAQ -->"
+      assert result =~ "This is **bold** text"
+      assert result =~ "Second paragraph"
+      assert result =~ "<!-- /details -->"
+    end
+
+    test "roundtrip: details block with surrounding content" do
+      doc = %{
+        "type" => "doc",
+        "content" => [
+          %{
+            "type" => "paragraph",
+            "content" => [%{"type" => "text", "text" => "Before details"}]
+          },
+          %{
+            "type" => "details",
+            "content" => [
+              %{
+                "type" => "detailsSummary",
+                "content" => [%{"type" => "text", "text" => "FAQ"}]
+              },
+              %{
+                "type" => "detailsContent",
+                "content" => [
+                  %{
+                    "type" => "paragraph",
+                    "content" => [%{"type" => "text", "text" => "Answer here"}]
+                  }
+                ]
+              }
+            ]
+          },
+          %{
+            "type" => "paragraph",
+            "content" => [%{"type" => "text", "text" => "After details"}]
+          }
+        ]
+      }
+
+      markdown = ProseMirror.to_markdown(doc)
+      {:ok, result} = ProseMirror.from_markdown(markdown)
+
+      assert %{
+               "type" => "doc",
+               "content" => [
+                 %{
+                   "type" => "paragraph",
+                   "content" => [%{"type" => "text", "text" => "Before details"}]
+                 },
+                 %{
+                   "type" => "details",
+                   "content" => [
+                     %{
+                       "type" => "detailsSummary",
+                       "content" => [%{"type" => "text", "text" => "FAQ"}]
+                     },
+                     %{
+                       "type" => "detailsContent",
+                       "content" => [
+                         %{
+                           "type" => "paragraph",
+                           "content" => [%{"type" => "text", "text" => "Answer here"}]
+                         }
+                       ]
+                     }
+                   ]
+                 },
+                 %{
+                   "type" => "paragraph",
+                   "content" => [%{"type" => "text", "text" => "After details"}]
+                 }
+               ]
+             } = result
+    end
+
+    test "roundtrip: details block survives markdown conversion" do
+      doc = %{
+        "type" => "doc",
+        "content" => [
+          %{
+            "type" => "details",
+            "content" => [
+              %{
+                "type" => "detailsSummary",
+                "content" => [%{"type" => "text", "text" => "Summary"}]
+              },
+              %{
+                "type" => "detailsContent",
+                "content" => [
+                  %{
+                    "type" => "paragraph",
+                    "content" => [%{"type" => "text", "text" => "Body content"}]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+
+      markdown = ProseMirror.to_markdown(doc)
+      {:ok, result} = ProseMirror.from_markdown(markdown)
+
+      assert %{
+               "type" => "doc",
+               "content" => [
+                 %{
+                   "type" => "details",
+                   "content" => [
+                     %{
+                       "type" => "detailsSummary",
+                       "content" => [%{"type" => "text", "text" => "Summary"}]
+                     },
+                     %{
+                       "type" => "detailsContent",
+                       "content" => [
+                         %{
+                           "type" => "paragraph",
+                           "content" => [%{"type" => "text", "text" => "Body content"}]
+                         }
+                       ]
+                     }
+                   ]
+                 }
+               ]
+             } = result
+    end
+
     test "roundtrip: markdown -> prosemirror -> markdown preserves content" do
       original = "Hello **world** and *italic* text"
 
