@@ -9,8 +9,9 @@ defmodule Nexus.Content.Templates.Registry do
     "default" => %Template{
       slug: "default",
       label: "Default",
-      description: "A standard page with one rich text body.",
+      description: "A standard page with subtitle and rich text body.",
       fields: [
+        %Field{key: :subtitle, type: :text, label: "Subtitle"},
         %Field{key: :body, type: :rich_text, label: "Body", ai_refine: true}
       ]
     },
@@ -20,6 +21,7 @@ defmodule Nexus.Content.Templates.Registry do
       description: "A blog post with hero image, body, author, and featured toggle.",
       fields: [
         %Field{key: :hero_image, type: :image, label: "Hero Image"},
+        %Field{key: :subheadline, type: :textarea, label: "Introduction", ai_refine: true},
         %Field{key: :body, type: :rich_text, label: "Body", required: true, ai_refine: true},
         %Group{
           key: :metadata,
@@ -68,6 +70,17 @@ defmodule Nexus.Content.Templates.Registry do
           ]
         },
         %Field{key: :body, type: :rich_text, label: "Body Content", ai_refine: true}
+      ]
+    },
+    "article" => %Template{
+      slug: "article",
+      label: "Article",
+      description: "An article with author, introduction, hero image, and body content.",
+      fields: [
+        %Field{key: :author, type: :text, label: "Author"},
+        %Field{key: :introduction, type: :textarea, label: "Introduction", ai_refine: true},
+        %Field{key: :hero_image, type: :image, label: "Hero Image"},
+        %Field{key: :body, type: :rich_text, label: "Body", required: true, ai_refine: true}
       ]
     }
   }
