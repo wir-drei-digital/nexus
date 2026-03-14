@@ -21,7 +21,10 @@ defmodule Nexus.Content.Actions.GetPublishedContent do
          {:ok, page} <- get_page(project, path, actor),
          effective_locale = locale || project.default_locale,
          {:ok, page_locale, version} <- get_published_version(page, effective_locale) do
-      html_content = Renderer.render(page.template_slug, version.template_data)
+      html_content =
+        page.template_slug
+        |> Renderer.render(version.template_data)
+        |> absolutize_urls()
 
       {:ok,
        %{
@@ -88,6 +91,14 @@ defmodule Nexus.Content.Actions.GetPublishedContent do
         end)
     end
   end
+
+  defp absolutize_urls(html) when is_binary(html) do
+    base = NexusWeb.Endpoint.url()
+
+    Regex.replace(~r/(<img\s[^>]*\bsrc=")\//, html, "\\1#{base}/")
+  end
+
+  defp absolutize_urls(other), do: other
 
   defp get_published_version(page, locale) do
     case Ash.get(Nexus.Content.PageLocale, %{page_id: page.id, locale: locale},
